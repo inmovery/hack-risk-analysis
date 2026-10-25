@@ -5,7 +5,7 @@ namespace Aeza.Risk.Core.Abstractions;
 /// <param name="CreatedAt">Загружен</param>
 /// <param name="Actor">Кто загрузил</param>
 /// <param name="Connector">Входящий коннектор</param>
-/// <param name="Synthetic">Синтетика</param>
+/// <param name="Synthetic">События симулятора</param>
 /// <param name="Status">uploading | pending | running | succeeded | failed</param>
 /// <param name="Bytes">Размер файла</param>
 /// <param name="ChunksTotal">Кусков по 5000 строк</param>

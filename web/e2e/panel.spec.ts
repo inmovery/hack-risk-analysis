@@ -3,9 +3,21 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { admin, analyst, apiUrl, countReloads, generationOf, login } from './helpers';
+import { admin, analyst, apiUrl, countReloads, generationOf, login, setScoring } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
+
+// Сценарии весов и подписи «индекс, не вероятность» относятся к режиму правил; по умолчанию основной балл — ML
+test.beforeAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'rules');
+  await ctx.close();
+});
+test.afterAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'ml');
+  await ctx.close();
+});
 
 const fresh = { storageState: { cookies: [], origins: [] } };
 const desktop = { viewport: { width: 1440, height: 900 }, locale: 'ru-RU' };
@@ -143,7 +155,8 @@ test.describe('отдельные сессии', () => {
     test.skip(!analyst.login, 'аналитик не настроен в .env');
     await login(page, analyst);
     await page.goto('/model');
-    await expect(page.getByText(/Изменять веса и загружать тестовые данные может администратор/)).toBeVisible();
+    await expect(page.getByText(/Менять режим, пороги и веса может администратор модели/)).toBeVisible();
+    await expect(page.getByTestId('scoring-rules')).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('save-model')).toHaveCount(0);
   });
 
@@ -154,4 +167,22 @@ test.describe('отдельные сессии', () => {
     expect((await page.request.get(apiUrl('/api/v1/customers'))).status()).toBe(401);
     expect(admin.login).toBeTruthy();
   });
+});
+
+test('выпадающий список фильтра: клавиатура открывает, выбирает и закрывает', async ({ page }) => {
+  await page.goto('/customers');
+  const trigger = page.getByTestId('filter-state');
+  await trigger.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).toBeFocused();
+  await expect(page).toHaveURL(/state=/);
+  await trigger.click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await expect(page).toHaveURL(/state=/);
 });

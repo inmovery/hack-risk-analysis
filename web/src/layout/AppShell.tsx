@@ -4,13 +4,15 @@ import { useAuth } from '../auth/AuthContext';
 import { useLive } from '../live/LiveContext';
 import { useSummary } from '../api/queries';
 import { Banner, LivePill, Tag } from '../components/ui';
+import { BrandLines, IconCustomers, IconModel, IconOverview, IconSimulation, IconSource } from '../components/icons';
 import { age, dateTime, localTime } from '../format';
 
 const nav = [
-  { to: '/', label: 'Обзор', icon: '◫', end: true },
-  { to: '/customers', label: 'Клиенты', icon: '◧', end: false },
-  { to: '/model', label: 'Модель', icon: '⚙', end: false },
-  { to: '/source', label: 'Источник', icon: '⇪', end: false },
+  { to: '/', label: 'Обзор', icon: <IconOverview />, end: true },
+  { to: '/customers', label: 'Клиенты', icon: <IconCustomers />, end: false },
+  { to: '/model', label: 'Модель', icon: <IconModel />, end: false },
+  { to: '/source', label: 'Источник', icon: <IconSource />, end: false },
+  { to: '/simulation', label: 'Симуляция', icon: <IconSimulation />, end: false },
 ];
 
 export function AppShell() {
@@ -27,8 +29,11 @@ export function AppShell() {
       </a>
       <aside className="sidebar" aria-label="Навигация">
         <div className="brand">
-          <div className="brand-title">Aeza · Risk</div>
-          <div className="caption muted">Анализатор оттока</div>
+          <span className="brand-mark" aria-hidden="true">é</span>
+          <span className="stack" style={{ gap: 0 }}>
+            <span className="brand-title">Aéza · Risk</span>
+            <span className="brand-sub">Анализатор оттока</span>
+          </span>
         </div>
         <nav className="stack" style={{ gap: 4 }}>
           {nav.map((n) => (
@@ -41,6 +46,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className="sidebar-spacer" />
+        <BrandLines className="sidebar-pattern" />
         <div className="user-block">
           <strong>{user?.login}</strong>
           <span className="caption secondary">{user?.role === 'admin' ? 'Администратор модели' : 'Аналитик (чтение)'}</span>
@@ -79,7 +85,7 @@ export function Topbar({ title, children }: { title: ReactNode; children?: React
         {children}
         {g && (g.sourceKind === 'stream' ? (
           <Tag tone={silent ? 'warning' : 'neutral'} title={`Последнее изменение источника (событие): ${dateTime(g.sourceUpdatedAt)}; база — тестовые данные на ${dateTime(g.sourceAsOf)}`}>
-            <span data-testid="freshness">{silent ? `Поток молчит ${age(g.sourceAgeSeconds)}` : `Поток · событие ${age(g.sourceAgeSeconds)} назад`}{g.synthetic ? ' · синтетика' : ''}</span>
+            <span data-testid="freshness">{silent ? `Поток молчит ${age(g.sourceAgeSeconds)}` : `Поток · событие ${age(g.sourceAgeSeconds)} назад`}</span>
           </Tag>
         ) : (
           <Tag tone={stale ? 'warning' : 'neutral'} title={`Момент выгрузки тестовых данных (sourceAsOf): ${dateTime(g.sourceAsOf)}`}>

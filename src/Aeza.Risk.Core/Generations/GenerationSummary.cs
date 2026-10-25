@@ -2,7 +2,8 @@ namespace Aeza.Risk.Core.Generations;
 
 public sealed record LevelMoneyDto(int Customers, long PlannedRenewalsMinor, long UnfundedMinor, long AtRiskMinor);
 
-public sealed record SummaryMoneyDto(int HorizonDays, long PlannedRenewalsMinor, long UnfundedMinor, long AtRiskMinor, long UnscoredPlannedMinor, long UnfundedUnknownPlannedMinor, IReadOnlyDictionary<string, LevelMoneyDto> ByLevel);
+public sealed record SummaryMoneyDto(int HorizonDays, long PlannedRenewalsMinor, long UnfundedMinor, long AtRiskMinor, long UnscoredPlannedMinor, long UnfundedUnknownPlannedMinor, IReadOnlyDictionary<string, LevelMoneyDto> ByLevel,
+    LossInterval? AtRiskInterval = null);
 
 public sealed record SummaryCustomersDto(int Total, IReadOnlyDictionary<string, int> ByLevel, IReadOnlyDictionary<string, int> ByState, int Scored, decimal ScoreSum);
 
@@ -26,7 +27,7 @@ public sealed record ChurnSummaryDto(FullChurnSummaryDto FullChurn, PaymentTrend
 /// <summary>Неизменяемая сводка поколения (хранится в generations.summary_json, читается и API, и /metrics)</summary>
 public sealed record GenerationSummary(
     SummaryCustomersDto Customers, SummaryServicesDto Services, SummaryMoneyDto Money, IReadOnlyDictionary<string, int> QualityFlags,
-    IReadOnlyList<TopCustomerDto> TopAtRisk, ChurnSummaryDto? Churn = null, MlShadowSummaryDto? MlShadow = null);
+    IReadOnlyList<TopCustomerDto> TopAtRisk, ChurnSummaryDto? Churn = null, MlShadowSummaryDto? MlShadow = null, ScoringInfo? Scoring = null);
 
 public sealed record ObservedEventDto(long ServiceId, long OwnerId, string Kind, string? FromStatus, string? ToStatus, DateTimeOffset ObservedFrom, DateTimeOffset ObservedTo, long SourceRevision);
 
@@ -43,4 +44,14 @@ public static class Definitions
         FullChurn: "Уход клиента целиком: минимальный риск-индекс среди действующих услуг клиента — клиент уходит целиком, только если уходят все его услуги. Индекс, не вероятность.",
         PaymentTrend: "Снижение платежей: выполненные платежи за последние W дней против предыдущих W дней; снижение — не меньше порога. Если клиент моложе 2W — «мало истории» (не 0).",
         ExpiryOutcomes: "Исходы сроков (факт из журнала): услуга не продлена в течение N дней после срока или удалена. Фиксируется, только если источник обновлялся после срока + N дней.");
+
+    /// <summary>Основной балл — ML: балл, деньги и уход целиком считаются от вероятности модели</summary>
+    public static readonly DefinitionsDto Ml = Default with
+    {
+        AtRisk = "Выручка под риском: сумма плановых продлений в горизонте, взвешенная вероятностью непродления услуги по ML-модели. Услуги вне окна модели не оцениваются и в сумму не входят.",
+        Score = "Score 0–100 — вероятность непродления по ML-модели × 100, максимум по услугам клиента. Модель оценивает услуги active и suspended за 14 и 7 дней до срока (недельные — за 3 дня); остальные — «нет оценки».",
+        FullChurn = "Уход клиента целиком: минимальный балл ML среди действующих услуг клиента — клиент уходит целиком, только если уходят все его услуги.",
+    };
+
+    public static DefinitionsDto For(string? scoring) => scoring == ScoringModes.Ml ? Ml : Default;
 }

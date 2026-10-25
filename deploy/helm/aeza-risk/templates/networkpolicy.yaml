@@ -1,5 +1,5 @@
 {{- if .Values.networkPolicy.enabled }}
-# Сервис: вход только от Ingress-контроллера (API, hub, health), от Prometheus (/metrics) и от проверки helm test.
+# Сервис: вход только от Ingress-контроллера (API, hub, health), от Prometheus (/metrics), от симулятора и от проверки helm test.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -30,6 +30,12 @@ spec:
             matchLabels:
               {{- include "aeza-risk.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: test
+        {{- if .Values.simulation.simulator.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "aeza-risk.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: simulator
+        {{- end }}
       ports:
         - protocol: TCP
           port: 5000

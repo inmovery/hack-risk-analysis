@@ -5,7 +5,7 @@ using JetBrains.Annotations;
 namespace Aeza.Risk.Feature.Source.Events;
 
 /// <summary>Документационная форма пакета событий: v1 (полное состояние записи) и v2 (доменное событие) можно смешивать</summary>
-/// <param name="Synthetic">Пакет — синтетика (симулятор, демонстрация)</param>
+/// <param name="Synthetic">Пакет от симулятора</param>
 /// <param name="Events">События в порядке возникновения (не больше 1000)</param>
 [PublicAPI]
 public sealed record EventBatchRequest(bool? Synthetic, IReadOnlyList<SourceEventRequest> Events);
@@ -56,7 +56,7 @@ public sealed record EventBatchResponse(
 /// <param name="Changes">Коды изменений</param>
 /// <param name="Effect">Значения «от → до» без PII</param>
 /// <param name="Origin">push</param>
-/// <param name="Synthetic">Синтетика</param>
+/// <param name="Synthetic">События симулятора</param>
 [PublicAPI]
 public sealed record JournalItemDto(
     long Seq, DateTimeOffset ReceivedAt, DateTimeOffset OccurredAt, string? EventType, string Kind, long EntityId, long? OwnerId, string Outcome,

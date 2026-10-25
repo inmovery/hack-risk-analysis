@@ -49,6 +49,14 @@ public sealed class SimConfig
 
     public NoiseConfig Noise { get; set; } = new();
 
+    /// <summary>Дополнительные события и механики; не заданы — выключены, конфиг и snapshot системы прежнего seed не меняются</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExtendedConfig? Extended { get; set; }
+
+    /// <summary>Действующие дополнительные механики</summary>
+    [JsonIgnore]
+    public ExtendedConfig Ext => Extended ?? ExtendedConfig.Off;
+
     private static List<SegmentConfig> DefaultSegments() =>
     [
         new()
@@ -201,6 +209,31 @@ public sealed class HazardConfig
     public int MatureDaysMax { get; set; } = 30;
     /// <summary>Намерение гаснет, если удовлетворённость поднялась выше</summary>
     public double CancelSatisfaction { get; set; } = 0.7;
+}
+
+/// <summary>Дополнительные события: сигналы переезда, опрос при уходе, удержание с контрольной группой</summary>
+public sealed class ExtendedConfig
+{
+    /// <summary>Всё выключено</summary>
+    public static readonly ExtendedConfig Off = new() { BackupDownloadsPerDay = 0, DnsEditsPerDay = 0 };
+
+    /// <summary>Перед уходом из-за недовольства или цены клиент выгружает бэкап и переводит DNS к другому провайдеру</summary>
+    public bool MigrationSignals { get; set; }
+
+    /// <summary>Выгрузок бэкапа в день без намерения уйти (ложные сигналы), с поправкой на технический уровень клиента</summary>
+    public double BackupDownloadsPerDay { get; set; } = 1.0 / 120;
+
+    /// <summary>Правок DNS в день без намерения уйти; к другому провайдеру — только малая их доля</summary>
+    public double DnsEditsPerDay { get; set; } = 1.0 / 60;
+
+    /// <summary>Доля ушедших клиентов, ответивших на опрос при уходе (0 — опроса нет)</summary>
+    public double ExitSurveyResponse { get; set; }
+
+    /// <summary>Доля кандидатов на удержание, которым предложение не отправляется (контрольная группа; 0 — без неё)</summary>
+    public double RetentionHoldoutShare { get; set; }
+
+    /// <summary>Эффект предложения зависит от причины ухода и вида предложения; кандидаты — и по низкому NPS</summary>
+    public bool HeterogeneousRetention { get; set; }
 }
 
 /// <summary>Шум и ложные сигналы</summary>

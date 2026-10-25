@@ -138,7 +138,7 @@ public sealed class AgendaItem
     public double Num { get; set; }
 }
 
-/// <summary>Весь мир источника: записи, агенты, очередь действий, счётчики и состояние генератора</summary>
+/// <summary>Весь snapshot системы источника: записи, агенты, очередь действий, счётчики и состояние генератора</summary>
 public sealed class World
 {
     public int FormatVersion { get; set; } = 1;
@@ -147,7 +147,7 @@ public sealed class World
     public ulong[] Rng { get; set; } = [];
     /// <summary>Начало истории (T₀) или момент инициализации</summary>
     public DateTimeOffset StartedAt { get; set; }
-    /// <summary>До какого момента мир смоделирован (все события до него сгенерированы)</summary>
+    /// <summary>До какого момента snapshot системы смоделирован (все события до него сгенерированы)</summary>
     public DateTimeOffset Clock { get; set; }
     public long NextAccountId { get; set; } = 1;
     public long NextServiceId { get; set; } = 1;
@@ -166,7 +166,7 @@ public sealed class World
     public List<AgendaItem> Agenda { get; set; } = [];
     /// <summary>Конец сгенерированной истории: дальше — live (регистрации идут потоком)</summary>
     public DateTimeOffset HistoryEnd { get; set; }
-    /// <summary>Параметры модели, с которыми создан мир (продолжение — с ними же)</summary>
+    /// <summary>Параметры модели, с которыми создан snapshot системы (продолжение — с ними же)</summary>
     public SimConfig? Config { get; set; }
     /// <summary>Длина outbox после последнего сохранения (live): события дальше будут сгенерированы заново теми же</summary>
     public long OutboxLength { get; set; }

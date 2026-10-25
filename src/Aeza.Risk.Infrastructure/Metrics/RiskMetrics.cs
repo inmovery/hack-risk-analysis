@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Globalization;
 
+using Aeza.Risk.Core;
 using Aeza.Risk.Core.Generations;
 using Aeza.Risk.Core.Options;
 using Aeza.Risk.Infrastructure.Data;
@@ -72,6 +73,12 @@ public static class MetricNames
 
     /// <summary>Возраст данных источника (с последнего события или снимка), секунды</summary>
     public const string SourceAge = "aeza.source.age";
+
+    /// <summary>Чем посчитан основной балл поколения (label mode: rules/ml, значение 1 у использованного)</summary>
+    public const string Scoring = "aeza.scoring";
+
+    /// <summary>90 % интервал выручки под риском (label bound: low/high), евро — только когда балл считает ML</summary>
+    public const string MoneyAtRiskInterval = "aeza.money.at_risk.interval.euros";
 }
 
 /// <summary>Неизменяемый срез бизнес-показателей одного поколения (то, что видит один scrape)</summary>
@@ -142,6 +149,14 @@ public sealed class RiskMetrics : IDisposable
         Single(MetricNames.GenerationAsOf, "Момент оценки поколения (asOf), unix-время", s => s.AsOf.ToUnixTimeSeconds(), "s");
         Single(MetricNames.SourceAge, "Возраст данных источника (с последнего события или снимка)",
             s => Math.Max(0, (time.GetUtcNow() - s.SourceUpdatedAt).TotalSeconds), "s");
+        Labeled(MetricNames.MoneyAtRiskInterval, "90 % интервал выручки под риском, евро (только в режиме ML: балл — вероятность)", "bound",
+            s => s.Summary.Money.AtRiskInterval is { } i ? new Dictionary<string, double> { ["low"] = Eur(i.LowMinor), ["high"] = Eur(i.HighMinor) } : null);
+        Labeled(MetricNames.Scoring, "Чем посчитан основной балл поколения: 1 — этот режим (rules — правила, ml — только ML-модель)", "mode",
+            s => new Dictionary<string, int>
+            {
+                [ScoringModes.Rules] = s.Summary.Scoring?.Used == ScoringModes.Ml ? 0 : 1,
+                [ScoringModes.Ml] = s.Summary.Scoring?.Used == ScoringModes.Ml ? 1 : 0,
+            });
 
         void Single(string name, string description, Func<BusinessMetricsSnapshot, double> value, string? unit = null) =>
             _meter.CreateObservableGauge(name, () => state.Read() is { } s ? [new Measurement<double>(value(s))] : Array.Empty<Measurement<double>>(), unit, description);

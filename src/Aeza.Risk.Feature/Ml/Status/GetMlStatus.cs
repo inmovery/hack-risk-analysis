@@ -27,10 +27,17 @@ namespace Aeza.Risk.Feature.Ml.Status;
 /// <param name="NextStep">Путь обучения и включения</param>
 /// <param name="Labels">Созревшие исходы</param>
 /// <param name="Shadow">Теневая модель: карточка, офлайн-сравнение с правилами, прогнозы активного поколения, проверка на реальных исходах</param>
+/// <param name="Scoring">Чем считается основной балл: выбранный режим и чем посчитано активное поколение</param>
 [PublicAPI]
 public sealed record MlStatus(
     string Status, string Reason, string Target, int ObservedSnapshots, int ObservedStatusChanges, int ObservedDeletions, string Collection, string NextStep,
-    MlLabels Labels, MlShadowStatus? Shadow = null);
+    MlLabels Labels, MlShadowStatus? Shadow = null, MlScoringStatus? Scoring = null);
+
+/// <summary>Режим основного балла</summary>
+/// <param name="Primary">Выбранный режим: rules | ml</param>
+/// <param name="Generation">Чем посчитано активное поколение (null — поколения ещё нет)</param>
+[PublicAPI]
+public sealed record MlScoringStatus(string Primary, ScoringInfo? Generation);
 
 /// <summary>Накопленные исходы для обучения (непродление за N дней)</summary>
 /// <param name="Renewed">Продлено</param>
@@ -63,7 +70,7 @@ public sealed record MlFeatureImportance(string Name, double PrAucDrop);
 /// <summary>Офлайн-отчёт модели (из model.json)</summary>
 /// <param name="Model">logistic | fasttree</param>
 /// <param name="Baseline">rules | rulesWide — лучшая базовая линия правил на проверке</param>
-/// <param name="Synthetic">Обучена и проверена на синтетике: метрики — проверка конвейера, не качество на реальных клиентах</param>
+/// <param name="Synthetic">Обучена и проверена на данных симулятора</param>
 /// <param name="TestFrom">Начало отложенного периода</param>
 /// <param name="TestRows">Решений в проверке</param>
 /// <param name="TestPositives">Из них «не продлено»</param>
@@ -96,23 +103,28 @@ public class GetMlStatus
         var outcomes = await journal.GetOutcomeStatsAsync(0, cancellationToken);
         var ready = outcomes.Renewed >= RequiredPerClass && outcomes.NotRenewed >= RequiredPerClass;
         var active = await models.GetActiveAsync(cancellationToken);
+        var primary = await models.GetScoringAsync(cancellationToken);
+        var lookup = await generations.ResolveAsync(null, cancellationToken);
+        var gen = lookup.Context?.Generation;
+        var genSummary = gen is null ? null : AppJson.Deserialize<GenerationSummary>(gen.SummaryJson);
+        var mlPrimary = primary == ScoringModes.Ml;
         MlShadowStatus? shadow = null;
         if (active is not null)
         {
-            var lookup = await generations.ResolveAsync(null, cancellationToken);
-            var gen = lookup.Context?.Generation;
-            var summary = gen is null ? null : AppJson.Deserialize<GenerationSummary>(gen.SummaryJson).MlShadow;
+            var summary = genSummary?.MlShadow;
             var forThisModel = summary is not null && summary.ModelId == active.Model.Id;
             shadow = new MlShadowStatus(active.Model, Offline(active.CardJson), forThisModel ? summary : null, forThisModel ? gen!.Id : null,
                 await models.EvaluateAsync(active.Model.Id, cancellationToken),
-                active.Model.Synthetic
-                    ? "Модель обучена на синтетике симулятора: офлайн-метрики проверяют конвейер, а не качество на реальных клиентах. Прогнозы в тени не меняют баллы, уровни, сортировки и деньги."
-                    : "Прогнозы в тени не меняют баллы, уровни, сортировки и деньги. Продвижение — после проверки на реальных исходах и согласования бизнес-цели.");
+                mlPrimary
+                    ? "Основной балл — вероятность модели × 100: уровни, сортировки, деньги и /metrics считаются от неё; услуги вне окна модели — «нет оценки». Правила считаются рядом для сравнения."
+                    : "Прогнозы в тени не меняют баллы, уровни, сортировки и деньги.");
         }
         return TypedResults.Ok(new MlStatus(
             shadow is null ? "not_trained" : "shadow",
             shadow is not null
-                ? $"Включена теневая модель {shadow.Model.Version}: прогноз «не продлено» считается рядом с правилами и сверяется с исходами сроков; основной score — правила."
+                ? mlPrimary
+                    ? $"Основной балл считает модель {shadow.Model.Version}: вероятность «не продлено» × 100; правила считаются рядом для сравнения."
+                    : $"Включена теневая модель {shadow.Model.Version}: прогноз «не продлено» считается рядом с правилами и сверяется с исходами сроков; основной score — правила."
                 : ready
                     ? "Исходов достаточно для офлайн-обучения и проверки; модель ещё не обучена и не подключена — основной score остаётся правилами."
                     : $"Мало наблюдённых исходов «продлил/не продлил»: {outcomes.Renewed} / {outcomes.NotRenewed}, нужно ≥ {RequiredPerClass} каждого. Исходные тестовые данные без истории; исходы копятся из потока событий.",
@@ -120,8 +132,9 @@ public class GetMlStatus
             counts.Snapshots, counts.StatusChanges, counts.Deletions,
             "expiry_outcomes: исходы сроков из журнала событий; набор point-in-time строится переигрыванием журнала (tools/Aeza.Risk.Ml dataset --db); ml_shadow_predictions — прогнозы теневой модели в точках решения.",
             "Офлайн: tools/Aeza.Risk.Ml dataset → train (логистическая регрессия и FastTree против правил, ONNX) → PUT /api/v1/ml/model; модель работает в тени, продвижение — только при выигрыше на реальных исходах.",
-            new MlLabels(outcomes.Renewed, outcomes.NotRenewed, outcomes.Pending, RequiredPerClass, ready, shadow is null ? "onnx (модель не загружена)" : "onnx runtime, в тени"),
-            shadow));
+            new MlLabels(outcomes.Renewed, outcomes.NotRenewed, outcomes.Pending, RequiredPerClass, ready,
+                shadow is null ? "onnx (модель не загружена)" : mlPrimary ? "onnx runtime, основной балл" : "onnx runtime, в тени"),
+            shadow, new MlScoringStatus(primary, genSummary is null ? null : genSummary.Scoring ?? ScoringInfo.Rules)));
     }
 
     /// <summary>Сводка карточки model.json (поля, которых нет, — пустые)</summary>

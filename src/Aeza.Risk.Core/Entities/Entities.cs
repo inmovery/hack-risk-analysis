@@ -123,7 +123,7 @@ public sealed class GenerationEntity
     public long SourceSeq { get; set; }
     /// <summary>Время последнего изменения источника (событие или снимок) на момент расчёта</summary>
     public DateTimeOffset? SourceUpdatedAt { get; set; }
-    /// <summary>Во входах есть синтетика: снимок помечен synthetic или применены события симулятора после базы</summary>
+    /// <summary>Во входах есть данные симулятора: снимок помечен synthetic или применены события симулятора после базы</summary>
     public bool SourceSynthetic { get; set; }
     /// <summary>Последнее доменное событие, учтённое в активности клиентов (признаки поведения) — часть входов поколения</summary>
     public long ActivitySeq { get; set; }
@@ -185,8 +185,10 @@ public sealed class AppStateEntity
     public DateTimeOffset? SourceUpdatedAt { get; set; }
     /// <summary>Теневая ML-модель; null — выключена</summary>
     public long? ActiveMlModelId { get; set; }
-    /// <summary>Счётчик включений и выключений теневой модели — часть входов поколения</summary>
+    /// <summary>Счётчик включений и выключений теневой модели и смен режима расчёта — часть входов поколения</summary>
     public long MlRevision { get; set; }
+    /// <summary>Чем считается основной балл: ml (по умолчанию) | rules</summary>
+    public string ScoringPrimary { get; set; } = "ml";
 }
 
 /// <summary>Журнал событий источника (только добавление): что пришло, когда и что с ним сделано</summary>
@@ -305,6 +307,10 @@ public sealed class CustomerActivityEntity
     public int Renewals { get; set; }
     public int Deletions { get; set; }
     public int BonusExpired { get; set; }
+    public int BackupDownloads { get; set; }
+    public int DnsExternal { get; set; }
+    public int RetentionOffers { get; set; }
+    public int RetentionHoldouts { get; set; }
     public int Events { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
@@ -481,6 +487,8 @@ public sealed class MlModelEntity
     public string? ReportMarkdown { get; set; }
     public byte[] Onnx { get; set; } = [];
     public string OnnxSha256 { get; set; } = "";
+    /// <summary>Структура деревьев (trees.json) для точных вкладов; null — пакет без неё</summary>
+    public string? TreesJson { get; set; }
     public DateTimeOffset UploadedAt { get; set; }
     public string UploadedBy { get; set; } = "";
 }
@@ -497,4 +505,41 @@ public sealed class MlShadowPredictionEntity
     public long GenerationId { get; set; }
     public double Probability { get; set; }
     public decimal? RulesScore { get; set; }
+}
+
+/// <summary>Событие, собранное в панели: ждёт симулятор, потом попадает в общий поток событий</summary>
+public sealed class SimulationCommandEntity
+{
+    public long Id { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    /// <summary>Ревизия snapshot системы, к которой относится событие</summary>
+    public long WorldRevision { get; set; }
+    public string Type { get; set; } = "";
+    public long AccountId { get; set; }
+    public long? ServiceId { get; set; }
+    public string DataJson { get; set; } = "{}";
+    /// <summary>pending | applied | rejected</summary>
+    public string Status { get; set; } = "pending";
+    public string EventIdsJson { get; set; } = "[]";
+    public string? Message { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+/// <summary>Симуляция: настройки, текущий snapshot системы и последний отчёт симулятора (одна строка)</summary>
+public sealed class SimulationStateEntity
+{
+    public int Id { get; set; } = 1;
+    public string SettingsJson { get; set; } = "{}";
+    public long Revision { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+    public long WorldRevision { get; set; }
+    public DateTimeOffset WorldStartedAt { get; set; }
+    public string WorldSettingsJson { get; set; } = "{}";
+    public DateTimeOffset? WorldResetAt { get; set; }
+    public string? WorldResetBy { get; set; }
+    public long ScenarioRequest { get; set; }
+    public string? AgentStatusJson { get; set; }
+    public DateTimeOffset? AgentReportedAt { get; set; }
 }

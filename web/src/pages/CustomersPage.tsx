@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { exportUrl, useCustomers, useSummary, type CustomerQuery } from '../api/queries';
 import { Topbar } from '../layout/AppShell';
 import { ErrorBox, FullChurnChip, RiskBadge, Skeleton, Tag } from '../components/ui';
+import { Select } from '../components/controls';
 import { eur, flagLabel, levelGlyph, levelLabel, score, stateLabel } from '../format';
 import { paymentShort, paymentTrendLabel } from '../journal';
 import type { CustomerListItem, PaymentTrendState, RiskLevel } from '../api/types';
@@ -100,10 +101,8 @@ export function CustomersPage() {
               <span aria-hidden="true">{levelGlyph[l]}</span> {levelLabel[l]}{counts ? ` · ${counts[l]}` : ''}
             </button>
           ))}
-          <select className="input" aria-label="Состояние оценки" value={q.state} onChange={(e) => update({ state: e.target.value || null, page: null })}>
-            <option value="">Любое состояние оценки</option>
-            {Object.entries(stateLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
+          <Select ariaLabel="Состояние оценки" value={q.state} onChange={(v) => update({ state: v || null, page: null })} testId="filter-state" width={240}
+            options={[{ value: '', label: 'Любое состояние оценки' }, ...Object.entries(stateLabel).map(([k, v]) => ({ value: k, label: v }))]} />
           {q.flag && <Tag tone="warning">Флаг: {flagLabel[q.flag] ?? q.flag}</Tag>}
           <span className="spacer" />
           <input className="input" type="search" placeholder="Поиск по ID или email" aria-label="Поиск по ID или email" value={search}
@@ -168,9 +167,8 @@ export function CustomersPage() {
                   </table>
                 </div>
                 <div className="mobile-list">
-                  <select className="input" aria-label="Сортировка" value={`${q.sortBy}:${q.sortDirection}`} onChange={(e) => update({ sort: e.target.value, page: null })}>
-                    {SORTS.flatMap((f) => (['desc', 'asc'] as const).map((d) => <option key={`${f}:${d}`} value={`${f}:${d}`}>{sortLabel[f]} {d === 'asc' ? '↑' : '↓'}</option>))}
-                  </select>
+                  <Select ariaLabel="Сортировка" value={`${q.sortBy}:${q.sortDirection}`} onChange={(v) => update({ sort: v, page: null })} testId="mobile-sort" width="100%"
+                    options={SORTS.flatMap((f) => (['desc', 'asc'] as const).map((d) => ({ value: `${f}:${d}`, label: `${sortLabel[f]} ${d === 'asc' ? '↑ по возрастанию' : '↓ по убыванию'}` })))} />
                   {data.items.map((c) => (
                     <Link key={c.id} className="card stack" to={`/customers/${c.id}`} style={{ color: 'inherit' }}>
                       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -187,7 +185,7 @@ export function CustomersPage() {
                 </div>
                 <div className="pager">
                   <span className="caption secondary" data-testid="pager-info">
-                    {(data.page - 1) * data.pageSize + 1}–{Math.min(data.page * data.pageSize, data.total)} из {data.total} · расчёт №{data.generation.id} · равенства по ID ↑ · «нет оценки» всегда в конце
+                    {(data.page - 1) * data.pageSize + 1}–{Math.min(data.page * data.pageSize, data.total)} из {data.total} · расчёт №{data.generation.id}{data.generation.scoring === 'ml' ? ' · баллы: ML-модель' : ''} · равенства по ID ↑ · «нет оценки» всегда в конце
                   </span>
                   <span className="row" style={{ gap: 8 }}>
                     <button className="btn btn-secondary btn-sm" disabled={data.page <= 1} onClick={() => update({ page: String(data.page - 1) })}>← Назад</button>

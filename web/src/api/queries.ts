@@ -1,8 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, apiUrl } from './client';
 import type {
-  CustomerActivity, CustomerDetailResponse, CustomerEventsResponse, CustomerListResponse, HistoryResponse, ImportView, JournalPage, MlStatus,
-  ModelSettingsResponse, Revision, SnapshotInfo, StreamStatus, SummaryResponse,
+  ComposedEvent, ComposerEventType, CustomerActivity, CustomerDetailResponse, CustomerEventsResponse, CustomerListResponse, HistoryResponse, ImportView, JournalPage, MlStatus,
+  ModelSettingsResponse, Revision, SimulationView, SnapshotInfo, StreamStatus, SummaryResponse,
 } from './types';
 import { useLive } from '../live/LiveContext';
 
@@ -125,6 +125,15 @@ export function useMlStatus() {
   return useQuery({ queryKey: ['source', 'ml'], queryFn: ({ signal }) => api<MlStatus>('/api/v1/ml/status', { signal }) });
 }
 
+/** Симуляция: настройки, snapshot системы и отчёт симулятора — опрос раз в 3 с (статус меняется без событий поколения) */
+export function useSimulation() {
+  return useQuery({
+    queryKey: ['source', 'simulation'],
+    queryFn: ({ signal }) => api<SimulationView>('/api/v1/simulation', { signal }),
+    refetchInterval: 3000,
+  });
+}
+
 export function useSnapshots() {
   const { pollInterval } = useLive();
   return useQuery({ queryKey: ['source', 'snapshots'], queryFn: ({ signal }) => api<SnapshotInfo[]>('/api/v1/source/snapshots', { signal }), refetchInterval: pollInterval });
@@ -160,5 +169,29 @@ export function useHistory(days = 30) {
     queryKey: ['source', 'history', days],
     queryFn: ({ signal }) => api<HistoryResponse>(`/api/v1/analytics/history?days=${days}`, { signal }),
     refetchInterval: pollInterval,
+  });
+}
+
+/** Типы событий конструктора — справочник, не меняется без выкладки */
+export function useComposerTypes() {
+  return useQuery({ queryKey: ['composer-types'], queryFn: ({ signal }) => api<ComposerEventType[]>('/api/v1/simulation/events/types', { signal }), staleTime: Infinity });
+}
+
+/** События из конструктора: пока есть ожидающие — опрос чаще */
+export function useComposedEvents() {
+  return useQuery({
+    queryKey: ['source', 'composed'],
+    queryFn: ({ signal }) => api<ComposedEvent[]>('/api/v1/simulation/events', { signal }),
+    refetchInterval: (q) => (q.state.data?.some((e) => e.status === 'pending') ? 1500 : 5000),
+  });
+}
+
+/** Услуги клиента для конструктора (только когда клиент выбран) */
+export function useCustomerServices(id: number | null) {
+  return useQuery({
+    queryKey: ['gen', 'customer', id],
+    queryFn: ({ signal }) => api<CustomerDetailResponse>(`/api/v1/customers/${id}`, { signal }),
+    enabled: id !== null,
+    retry: false,
   });
 }

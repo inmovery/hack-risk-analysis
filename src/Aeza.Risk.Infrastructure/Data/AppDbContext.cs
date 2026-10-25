@@ -95,6 +95,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     /// <summary>Прогнозы теневой модели в точках решения</summary>
     public DbSet<MlShadowPredictionEntity> MlShadowPredictions => Set<MlShadowPredictionEntity>();
 
+    /// <summary>Настройки и состояние симуляции</summary>
+    public DbSet<SimulationStateEntity> SimulationState => Set<SimulationStateEntity>();
+
+    /// <summary>События, собранные в панели</summary>
+    public DbSet<SimulationCommandEntity> SimulationCommands => Set<SimulationCommandEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

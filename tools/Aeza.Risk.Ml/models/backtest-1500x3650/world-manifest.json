@@ -1,0 +1,436 @@
+{
+  "generator": "Aeza.Risk.SourceSimulator",
+  "formatVersion": 1,
+  "synthetic": true,
+  "runId": "e8897095",
+  "seed": 42,
+  "start": "2016-10-27T00:00:00.000Z",
+  "end": "2026-10-25T00:00:00.000Z",
+  "customers": 1500,
+  "services": 10351,
+  "servicesLive": 1117,
+  "events": 5124797,
+  "eventsByType": {
+    "account.closed": 126,
+    "account.login": 671357,
+    "account.registered": 1200,
+    "account.security_changed": 235,
+    "account.verified": 1092,
+    "balance.topped_up": 32558,
+    "bonus.expired": 393,
+    "bonus.granted": 1431,
+    "datacenter.incident": 599,
+    "dns.records_changed": 4265,
+    "exit.survey_answered": 332,
+    "notification.opened": 31334,
+    "nps.responded": 1100,
+    "payment.charged": 196254,
+    "payment.failed": 25503,
+    "renewal.reminder_sent": 62015,
+    "retention.holdout": 175,
+    "retention.offer_redeemed": 249,
+    "retention.offer_sent": 589,
+    "service.autoprolong_changed": 10149,
+    "service.backup_created": 13919,
+    "service.backup_downloaded": 3262,
+    "service.blocked": 106,
+    "service.deleted": 9234,
+    "service.expired": 42777,
+    "service.incident": 45611,
+    "service.ordered": 9936,
+    "service.plan_changed": 2473,
+    "service.reinstalled": 4250,
+    "service.renewed": 186318,
+    "service.resumed": 21326,
+    "service.suspended": 22587,
+    "service.term_changed": 396,
+    "tariff.price_changed": 12,
+    "ticket.closed": 7734,
+    "ticket.first_replied": 7736,
+    "ticket.opened": 7736,
+    "usage.daily": 3698251,
+    "withdrawal.requested": 177
+  },
+  "platform": "Win32NT/X64/.NET 10.0.12",
+  "note": "Синтетика: история воспроизводится по seed и параметрам на той же платформе. truth.jsonl не загружается в анализатор.",
+  "files": {
+    "snapshot.json": {
+      "bytes": 243382,
+      "sha256": "25dc6f54a4c7774368b52bba96d57dc82c6d61ba6caefecbbdf4971fcfef636b"
+    },
+    "events.jsonl": {
+      "bytes": 1623151047,
+      "sha256": "125ef1fb9db04d1f2b6d945b6173141c178f2072c4c1e2e93c6df58766791902"
+    },
+    "truth.jsonl": {
+      "bytes": 97943035,
+      "sha256": "454f6c77ce1744b5c1745a3b609a7108cb37529986ffc22cc7d4f2fa0bb86e74"
+    },
+    "state.json": {
+      "bytes": 5340374,
+      "sha256": "42e43f3795fc33273ae7c942fd7ea3eb930a2e1d5e1e9998a6f6df9f9a9d5c65"
+    }
+  },
+  "config": {
+    "customers": 1500,
+    "days": 3650,
+    "existingShare": 0.2,
+    "liveRegistrationsPerDay": 1,
+    "graceDays": 5,
+    "segments": [
+      {
+        "name": "stable_business",
+        "share": 0.2,
+        "satisfaction": 0.85,
+        "need": 0.85,
+        "finance": 0.9,
+        "priceSensitivity": 0.2,
+        "needTrend": 0,
+        "terms": {
+          "month": 0.3,
+          "quarter_year": 0.2,
+          "half_year": 0.2,
+          "year": 0.3
+        },
+        "plans": {
+          "vps-m": 0.3,
+          "vps-l": 0.4,
+          "vps-xl": 0.3
+        },
+        "autoProlong": 0.95,
+        "loginsPerDay": 1.2,
+        "cpuBase": 45,
+        "servicesMean": 2,
+        "promoShare": 0.05,
+        "twoFactor": 0.8,
+        "business": 0.85,
+        "habits": {
+          "auto": 0.6,
+          "manual": 0.35,
+          "last_moment": 0.05
+        },
+        "newServicePerDay": 0.006666666666666667,
+        "upgradePerDay": 0,
+        "decayPerDay": 0.0003333333333333333,
+        "shortLivedDeletePerDay": 0,
+        "attentive": true,
+        "abuser": false,
+        "topUpAttention": 1
+      },
+      {
+        "name": "growing_project",
+        "share": 0.15,
+        "satisfaction": 0.8,
+        "need": 0.6,
+        "finance": 0.75,
+        "priceSensitivity": 0.4,
+        "needTrend": 0.002,
+        "terms": {
+          "month": 0.8,
+          "quarter_year": 0.2
+        },
+        "plans": {
+          "vps-s": 0.4,
+          "vps-m": 0.4,
+          "vps-l": 0.2
+        },
+        "autoProlong": 0.8,
+        "loginsPerDay": 1.5,
+        "cpuBase": 35,
+        "servicesMean": 1.3,
+        "promoShare": 0.15,
+        "twoFactor": 0.4,
+        "business": 0.5,
+        "habits": {
+          "auto": 0.3,
+          "manual": 0.6,
+          "last_moment": 0.1
+        },
+        "newServicePerDay": 0.022222222222222223,
+        "upgradePerDay": 0.011111111111111112,
+        "decayPerDay": 0.0006666666666666666,
+        "shortLivedDeletePerDay": 0,
+        "attentive": true,
+        "abuser": false,
+        "topUpAttention": 1
+      },
+      {
+        "name": "price_sensitive",
+        "share": 0.25,
+        "satisfaction": 0.7,
+        "need": 0.7,
+        "finance": 0.5,
+        "priceSensitivity": 0.9,
+        "needTrend": 0,
+        "terms": {
+          "month": 0.9,
+          "week": 0.1
+        },
+        "plans": {
+          "vps-xs": 0.5,
+          "vps-s": 0.5
+        },
+        "autoProlong": 0.6,
+        "loginsPerDay": 0.6,
+        "cpuBase": 25,
+        "servicesMean": 1.1,
+        "promoShare": 0.7,
+        "twoFactor": 0.1,
+        "business": 0.1,
+        "habits": {
+          "auto": 0.1,
+          "manual": 0.4,
+          "last_moment": 0.5
+        },
+        "newServicePerDay": 0.0027397260273972603,
+        "upgradePerDay": 0,
+        "decayPerDay": 0.0011111111111111111,
+        "shortLivedDeletePerDay": 0,
+        "attentive": true,
+        "abuser": false,
+        "topUpAttention": 1
+      },
+      {
+        "name": "developer",
+        "share": 0.2,
+        "satisfaction": 0.75,
+        "need": 0.6,
+        "finance": 0.65,
+        "priceSensitivity": 0.5,
+        "needTrend": 0,
+        "terms": {
+          "hour": 0.45,
+          "week": 0.35,
+          "month": 0.2
+        },
+        "plans": {
+          "vps-xs": 0.4,
+          "vps-s": 0.4,
+          "vps-m": 0.2
+        },
+        "autoProlong": 0.5,
+        "loginsPerDay": 1,
+        "cpuBase": 20,
+        "servicesMean": 1.5,
+        "promoShare": 0.3,
+        "twoFactor": 0.3,
+        "business": 0.1,
+        "habits": {
+          "auto": 0.2,
+          "manual": 0.6,
+          "last_moment": 0.2
+        },
+        "newServicePerDay": 0.1,
+        "upgradePerDay": 0,
+        "decayPerDay": 0.0014285714285714286,
+        "shortLivedDeletePerDay": 0.2,
+        "attentive": true,
+        "abuser": false,
+        "topUpAttention": 1
+      },
+      {
+        "name": "forgotten_server",
+        "share": 0.15,
+        "satisfaction": 0.7,
+        "need": 0.03,
+        "finance": 0.6,
+        "priceSensitivity": 0.3,
+        "needTrend": 0,
+        "terms": {
+          "month": 1
+        },
+        "plans": {
+          "vps-xs": 0.6,
+          "vps-s": 0.4
+        },
+        "autoProlong": 0.95,
+        "loginsPerDay": 0.01,
+        "cpuBase": 1.5,
+        "servicesMean": 1,
+        "promoShare": 0.2,
+        "twoFactor": 0.05,
+        "business": 0.1,
+        "habits": {
+          "auto": 0.05,
+          "manual": 0.15,
+          "last_moment": 0.8
+        },
+        "newServicePerDay": 0,
+        "upgradePerDay": 0,
+        "decayPerDay": 0.0008333333333333334,
+        "shortLivedDeletePerDay": 0,
+        "attentive": false,
+        "abuser": false,
+        "topUpAttention": 0.03
+      },
+      {
+        "name": "abuser",
+        "share": 0.05,
+        "satisfaction": 0.6,
+        "need": 0.7,
+        "finance": 0.5,
+        "priceSensitivity": 0.5,
+        "needTrend": 0,
+        "terms": {
+          "hour": 0.4,
+          "week": 0.3,
+          "month": 0.3
+        },
+        "plans": {
+          "vps-s": 0.5,
+          "vps-m": 0.5
+        },
+        "autoProlong": 0.5,
+        "loginsPerDay": 0.8,
+        "cpuBase": 85,
+        "servicesMean": 1.2,
+        "promoShare": 0.5,
+        "twoFactor": 0,
+        "business": 0,
+        "habits": {
+          "manual": 1
+        },
+        "newServicePerDay": 0.03333333333333333,
+        "upgradePerDay": 0,
+        "decayPerDay": 0.0008333333333333334,
+        "shortLivedDeletePerDay": 0,
+        "attentive": false,
+        "abuser": true,
+        "topUpAttention": 1
+      }
+    ],
+    "plans": [
+      {
+        "name": "vps-xs",
+        "cpu": 1,
+        "ramGb": 1,
+        "diskGb": 15,
+        "monthPrice": 349
+      },
+      {
+        "name": "vps-s",
+        "cpu": 1,
+        "ramGb": 2,
+        "diskGb": 30,
+        "monthPrice": 549
+      },
+      {
+        "name": "vps-m",
+        "cpu": 2,
+        "ramGb": 4,
+        "diskGb": 60,
+        "monthPrice": 960
+      },
+      {
+        "name": "vps-l",
+        "cpu": 4,
+        "ramGb": 8,
+        "diskGb": 120,
+        "monthPrice": 1790
+      },
+      {
+        "name": "vps-xl",
+        "cpu": 8,
+        "ramGb": 16,
+        "diskGb": 240,
+        "monthPrice": 3490
+      }
+    ],
+    "locations": [
+      "de-fra",
+      "nl-ams",
+      "fi-hel",
+      "us-nyc"
+    ],
+    "incidentsPerLocationPerDay": 0.04,
+    "priceChanges": [
+      {
+        "day": 150,
+        "plan": "vps-s",
+        "percent": 20
+      },
+      {
+        "day": 270,
+        "plan": "vps-m",
+        "percent": 15
+      },
+      {
+        "day": 600,
+        "plan": "vps-xs",
+        "percent": 10
+      },
+      {
+        "day": 900,
+        "plan": "vps-l",
+        "percent": 12
+      },
+      {
+        "day": 1250,
+        "plan": "vps-s",
+        "percent": 10
+      },
+      {
+        "day": 1500,
+        "plan": "vps-xl",
+        "percent": 8
+      },
+      {
+        "day": 1850,
+        "plan": "vps-m",
+        "percent": 10
+      },
+      {
+        "day": 2200,
+        "plan": "vps-xs",
+        "percent": 15
+      },
+      {
+        "day": 2550,
+        "plan": "vps-l",
+        "percent": 10
+      },
+      {
+        "day": 2900,
+        "plan": "vps-s",
+        "percent": 12
+      },
+      {
+        "day": 3250,
+        "plan": "vps-m",
+        "percent": 8
+      },
+      {
+        "day": 3500,
+        "plan": "vps-xl",
+        "percent": 10
+      }
+    ],
+    "hazard": {
+      "b0": -10.4,
+      "b1": 4.5,
+      "b2": 4,
+      "b3": 3.5,
+      "b4": 2.2,
+      "b5": 2,
+      "shockDays": 45,
+      "matureDaysMin": 7,
+      "matureDaysMax": 30,
+      "cancelSatisfaction": 0.7
+    },
+    "noise": {
+      "silentChurnShare": 0.25,
+      "vacationsPerYear": 1,
+      "telemetryGap": 0.02,
+      "deliveryShuffle": 0.1,
+      "deliveryDuplicate": 0.02
+    },
+    "extended": {
+      "migrationSignals": true,
+      "backupDownloadsPerDay": 0.008,
+      "dnsEditsPerDay": 0.016,
+      "exitSurveyResponse": 0.35,
+      "retentionHoldoutShare": 0.2,
+      "heterogeneousRetention": true
+    }
+  }
+}

@@ -15,7 +15,7 @@ public sealed record BehaviorInput(IReadOnlyDictionary<long, AccountBehavior> Ac
 /// <param name="Text">Подпись из известных полей (без PII)</param>
 /// <param name="KnownType">Тип из каталога</param>
 /// <param name="Connector">Входящий коннектор</param>
-/// <param name="Synthetic">Синтетика</param>
+/// <param name="Synthetic">События симулятора</param>
 public sealed record DomainEventItem(
     long Seq, DateTimeOffset OccurredAt, DateTimeOffset ReceivedAt, string Type, string Domain, long? ServiceId, string Text, bool KnownType, string Connector, bool Synthetic);
 

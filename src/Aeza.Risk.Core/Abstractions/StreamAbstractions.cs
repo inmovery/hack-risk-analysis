@@ -5,15 +5,24 @@ namespace Aeza.Risk.Core.Abstractions;
 /// <summary>Кто и как передал события</summary>
 /// <param name="Origin">push</param>
 /// <param name="Actor">Пользователь или машинный клиент</param>
-/// <param name="Synthetic">Пакет помечен как синтетика (симулятор)</param>
+/// <param name="Synthetic">Пакет от симулятора</param>
 /// <param name="Connector">Входящий коннектор: http-push (INGEST_TOKEN), имя из Auth:IngestConnectors, panel (сессия администратора) или batch-import</param>
 /// <param name="Rejected">Отклонено событий пакета ещё до приёма (ошибки полей) — в счётчики коннектора</param>
 /// <param name="LastError">Первая ошибка пакета: путь поля и код, без значений</param>
 /// <param name="DeferRecalc">Не ставить пересчёт (пакетный импорт: один пересчёт в конце)</param>
 /// <param name="Chunk">Кусок пакетного импорта: отметить выполненным в той же транзакции, что и приём</param>
+/// <param name="SimulationWorld">Ревизия snapshot системы, к которому относится пакет: пакет пересозданного snapshot системы отклоняется</param>
 public sealed record IngestMeta(
     string Origin, string Actor, bool Synthetic, string Connector, int Rejected = 0, string? LastError = null, bool DeferRecalc = false,
-    ImportChunkRef? Chunk = null);
+    ImportChunkRef? Chunk = null, long? SimulationWorld = null);
+
+/// <summary>Пакет относится к уже пересозданному snapshot системы</summary>
+/// <param name="current">Текущая ревизия snapshot системы</param>
+public sealed class SimulationWorldChangedException(long? current) : Exception($"Snapshot системы симуляции пересоздан: текущая ревизия {current}")
+{
+    /// <summary>Текущая ревизия snapshot системы</summary>
+    public long? Current { get; } = current;
+}
 
 /// <summary>Кусок пакетного импорта</summary>
 /// <param name="ImportId">Импорт</param>
@@ -75,7 +84,7 @@ public interface ISourceIngestion
 /// <param name="Changes">Коды изменений</param>
 /// <param name="Effect">Значения «от → до» без PII</param>
 /// <param name="Origin">push</param>
-/// <param name="Synthetic">Синтетика (симулятор)</param>
+/// <param name="Synthetic">События симулятора</param>
 public sealed record JournalItem(
     long Seq, DateTimeOffset ReceivedAt, DateTimeOffset OccurredAt, string? EventType, string Kind, long EntityId, long? OwnerId, string Outcome,
     string? StaleReason, IReadOnlyList<string> Changes, IReadOnlyDictionary<string, object?> Effect, string Origin, bool Synthetic);
@@ -85,7 +94,7 @@ public sealed record JournalItem(
 /// <param name="LastEventAt">Последнее событие</param>
 /// <param name="SourceUpdatedAt">Последнее изменение источника (событие или снимок)</param>
 /// <param name="Events">Событий в журнале</param>
-/// <param name="Synthetic">Есть синтетические события</param>
+/// <param name="Synthetic">Есть события симулятора</param>
 public sealed record StreamCoverage(DateTimeOffset? StreamStartedAt, DateTimeOffset? LastEventAt, DateTimeOffset? SourceUpdatedAt, long Events, bool Synthetic);
 
 /// <summary>Факты за день события</summary>

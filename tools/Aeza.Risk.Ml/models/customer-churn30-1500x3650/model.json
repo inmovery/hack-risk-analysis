@@ -1,0 +1,449 @@
+{
+  "format": 1,
+  "kind": "customer",
+  "version": "20261025-1706-churn30-05c0bc3d",
+  "createdAt": "2026-10-25T17:06:51Z",
+  "target": "уход клиента целиком за 30 дней (нет действующих услуг и нет возврата 30 дней)",
+  "targetKey": "churn30",
+  "featureSchema": "aeza-ml-customer-v1",
+  "features": [
+    "live_services",
+    "suspended_services",
+    "prolong_wait_services",
+    "autoprolong_off_share",
+    "revenue_month_eur_log",
+    "max_price_month_eur",
+    "short_term_share",
+    "min_days_to_expiry",
+    "expiring_14",
+    "tenure_days_log",
+    "newest_service_age_log",
+    "deleted_services_log",
+    "funds_cover_month",
+    "balance_eur_log",
+    "bonus_unlocked",
+    "withdraw_eur_log",
+    "has_behavior",
+    "logins_7",
+    "logins_30",
+    "days_since_login",
+    "cpu_7",
+    "cpu_base",
+    "cpu_ratio",
+    "usage_days_7",
+    "failed_payments_30",
+    "payments_30_eur_log",
+    "topups_30",
+    "topups_90_eur_log",
+    "tickets_30",
+    "unsolved_30",
+    "csat_min_30",
+    "nps_min_90",
+    "incident_min_30_log",
+    "downgrades_60",
+    "upgrades_60",
+    "autoprolong_off_30",
+    "suspends_30",
+    "backups_14",
+    "withdrawals_30_eur_log",
+    "bonus_expired_45",
+    "deletions_90",
+    "renewals_90",
+    "backup_downloads_14",
+    "dns_external_30",
+    "retention_offers_90",
+    "retention_holdouts_90"
+  ],
+  "input": "Features",
+  "output": "Probability.output",
+  "model": "fasttree",
+  "seed": 42,
+  "synthetic": true,
+  "dataset": {
+    "source": "dataset:5453eaac",
+    "sha256": "b6a30c12696174a9f58dbff3f7dd8e25d73a8d0f43007be4654c42c05bbc6154",
+    "rows": 97680,
+    "dataStart": "2016-10-27T00:00:00Z",
+    "dataEnd": "2026-10-24T23:30:17Z"
+  },
+  "split": {
+    "kind": "по годам: обучение — срезы, исход которых известен до 1 января, проверка — срезы года",
+    "testYear": 2026,
+    "trainRows": 90252,
+    "testRows": 5822,
+    "testPositives": 304
+  },
+  "metrics": {
+    "model": {
+      "rows": 5822,
+      "positives": 304,
+      "prAuc": 0.7796,
+      "rocAuc": 0.964,
+      "k": 292,
+      "precisionAtK": 0.7158,
+      "recallAtK": 0.6875,
+      "brier": 0.0213
+    },
+    "rules": {
+      "rows": 5822,
+      "positives": 304,
+      "prAuc": 0.0992,
+      "rocAuc": 0.6021,
+      "k": 292,
+      "precisionAtK": 0.1747,
+      "recallAtK": 0.1678,
+      "brier": null
+    }
+  },
+  "backtest": {
+    "years": [
+      {
+        "year": 2016,
+        "trainRows": 0,
+        "trainPositives": 0,
+        "testRows": 2649,
+        "testPositives": 189,
+        "baseRate": 0.0713,
+        "skipped": "мало исходов: обучение 0 (нужно ≥ 100), проверка 189 (≥ 30)"
+      },
+      {
+        "year": 2017,
+        "trainRows": 299,
+        "trainPositives": 22,
+        "testRows": 12121,
+        "testPositives": 925,
+        "baseRate": 0.0763,
+        "skipped": "мало исходов: обучение 22 (нужно ≥ 100), проверка 925 (≥ 30)"
+      },
+      {
+        "year": 2018,
+        "trainRows": 13170,
+        "trainPositives": 990,
+        "testRows": 9029,
+        "testPositives": 628,
+        "baseRate": 0.0696,
+        "model": {
+          "rows": 9029,
+          "positives": 628,
+          "prAuc": 0.6862,
+          "rocAuc": 0.9459,
+          "k": 452,
+          "precisionAtK": 0.7699,
+          "recallAtK": 0.5541,
+          "brier": 0.0352
+        },
+        "rules": {
+          "rows": 9029,
+          "positives": 628,
+          "prAuc": 0.1614,
+          "rocAuc": 0.6369,
+          "k": 452,
+          "precisionAtK": 0.2677,
+          "recallAtK": 0.1927,
+          "brier": null
+        },
+        "prAucGain": 0.5248,
+        "ece": 0.0177
+      },
+      {
+        "year": 2019,
+        "trainRows": 22322,
+        "trainPositives": 1639,
+        "testRows": 9015,
+        "testPositives": 482,
+        "baseRate": 0.0535,
+        "model": {
+          "rows": 9015,
+          "positives": 482,
+          "prAuc": 0.7411,
+          "rocAuc": 0.9677,
+          "k": 451,
+          "precisionAtK": 0.6984,
+          "recallAtK": 0.6535,
+          "brier": 0.026
+        },
+        "rules": {
+          "rows": 9015,
+          "positives": 482,
+          "prAuc": 0.1039,
+          "rocAuc": 0.609,
+          "k": 451,
+          "precisionAtK": 0.1907,
+          "recallAtK": 0.1784,
+          "brier": null
+        },
+        "prAucGain": 0.6372,
+        "ece": 0.0124
+      },
+      {
+        "year": 2020,
+        "trainRows": 31279,
+        "trainPositives": 2117,
+        "testRows": 9337,
+        "testPositives": 460,
+        "baseRate": 0.0493,
+        "model": {
+          "rows": 9337,
+          "positives": 460,
+          "prAuc": 0.7118,
+          "rocAuc": 0.9626,
+          "k": 467,
+          "precisionAtK": 0.6531,
+          "recallAtK": 0.663,
+          "brier": 0.0236
+        },
+        "rules": {
+          "rows": 9337,
+          "positives": 460,
+          "prAuc": 0.1035,
+          "rocAuc": 0.6002,
+          "k": 467,
+          "precisionAtK": 0.197,
+          "recallAtK": 0.2,
+          "brier": null
+        },
+        "prAucGain": 0.6083,
+        "ece": 0.0072
+      },
+      {
+        "year": 2021,
+        "trainRows": 40466,
+        "trainPositives": 2602,
+        "testRows": 9895,
+        "testPositives": 541,
+        "baseRate": 0.0547,
+        "model": {
+          "rows": 9895,
+          "positives": 541,
+          "prAuc": 0.7619,
+          "rocAuc": 0.9613,
+          "k": 495,
+          "precisionAtK": 0.7111,
+          "recallAtK": 0.6506,
+          "brier": 0.024
+        },
+        "rules": {
+          "rows": 9895,
+          "positives": 541,
+          "prAuc": 0.1026,
+          "rocAuc": 0.5981,
+          "k": 495,
+          "precisionAtK": 0.1879,
+          "recallAtK": 0.1719,
+          "brier": null
+        },
+        "prAucGain": 0.6593,
+        "ece": 0.0092
+      },
+      {
+        "year": 2022,
+        "trainRows": 50576,
+        "trainPositives": 3157,
+        "testRows": 9695,
+        "testPositives": 401,
+        "baseRate": 0.0414,
+        "model": {
+          "rows": 9695,
+          "positives": 401,
+          "prAuc": 0.7965,
+          "rocAuc": 0.9799,
+          "k": 485,
+          "precisionAtK": 0.6082,
+          "recallAtK": 0.7357,
+          "brier": 0.0167
+        },
+        "rules": {
+          "rows": 9695,
+          "positives": 401,
+          "prAuc": 0.0899,
+          "rocAuc": 0.5998,
+          "k": 485,
+          "precisionAtK": 0.1526,
+          "recallAtK": 0.1845,
+          "brier": null
+        },
+        "prAucGain": 0.7065,
+        "ece": 0.0079
+      },
+      {
+        "year": 2023,
+        "trainRows": 60146,
+        "trainPositives": 3530,
+        "testRows": 10285,
+        "testPositives": 515,
+        "baseRate": 0.0501,
+        "model": {
+          "rows": 10285,
+          "positives": 515,
+          "prAuc": 0.7462,
+          "rocAuc": 0.9568,
+          "k": 515,
+          "precisionAtK": 0.6893,
+          "recallAtK": 0.6893,
+          "brier": 0.0219
+        },
+        "rules": {
+          "rows": 10285,
+          "positives": 515,
+          "prAuc": 0.1136,
+          "rocAuc": 0.637,
+          "k": 515,
+          "precisionAtK": 0.1903,
+          "recallAtK": 0.1903,
+          "brier": null
+        },
+        "prAucGain": 0.6327,
+        "ece": 0.0055
+      },
+      {
+        "year": 2024,
+        "trainRows": 70479,
+        "trainPositives": 4048,
+        "testRows": 10252,
+        "testPositives": 588,
+        "baseRate": 0.0574,
+        "model": {
+          "rows": 10252,
+          "positives": 588,
+          "prAuc": 0.7697,
+          "rocAuc": 0.9604,
+          "k": 513,
+          "precisionAtK": 0.7524,
+          "recallAtK": 0.6565,
+          "brier": 0.0243
+        },
+        "rules": {
+          "rows": 10252,
+          "positives": 588,
+          "prAuc": 0.1087,
+          "rocAuc": 0.5991,
+          "k": 513,
+          "precisionAtK": 0.191,
+          "recallAtK": 0.1667,
+          "brier": null
+        },
+        "prAucGain": 0.6609,
+        "ece": 0.0059
+      },
+      {
+        "year": 2025,
+        "trainRows": 80573,
+        "trainPositives": 4615,
+        "testRows": 9580,
+        "testPositives": 573,
+        "baseRate": 0.0598,
+        "model": {
+          "rows": 9580,
+          "positives": 573,
+          "prAuc": 0.8142,
+          "rocAuc": 0.9722,
+          "k": 479,
+          "precisionAtK": 0.8205,
+          "recallAtK": 0.6859,
+          "brier": 0.0222
+        },
+        "rules": {
+          "rows": 9580,
+          "positives": 573,
+          "prAuc": 0.1082,
+          "rocAuc": 0.5939,
+          "k": 479,
+          "precisionAtK": 0.1858,
+          "recallAtK": 0.1553,
+          "brier": null
+        },
+        "prAucGain": 0.706,
+        "ece": 0.0022
+      },
+      {
+        "year": 2026,
+        "trainRows": 90252,
+        "trainPositives": 5183,
+        "testRows": 5822,
+        "testPositives": 304,
+        "baseRate": 0.0522,
+        "model": {
+          "rows": 5822,
+          "positives": 304,
+          "prAuc": 0.7796,
+          "rocAuc": 0.964,
+          "k": 292,
+          "precisionAtK": 0.7158,
+          "recallAtK": 0.6875,
+          "brier": 0.0213
+        },
+        "rules": {
+          "rows": 5822,
+          "positives": 304,
+          "prAuc": 0.0992,
+          "rocAuc": 0.6021,
+          "k": 292,
+          "precisionAtK": 0.1747,
+          "recallAtK": 0.1678,
+          "brier": null
+        },
+        "prAucGain": 0.6804,
+        "ece": 0.005
+      }
+    ],
+    "yearsScored": 9,
+    "yearsModelBetter": 9,
+    "meanPrAucModel": 0.7564,
+    "meanPrAucRules": 0.1101,
+    "meanEce": 0.0081
+  },
+  "topFeatures": [
+    {
+      "name": "revenue_month_eur_log",
+      "meanAbsShap": 0.685
+    },
+    {
+      "name": "min_days_to_expiry",
+      "meanAbsShap": 0.4022
+    },
+    {
+      "name": "autoprolong_off_share",
+      "meanAbsShap": 0.362
+    },
+    {
+      "name": "cpu_7",
+      "meanAbsShap": 0.1909
+    },
+    {
+      "name": "live_services",
+      "meanAbsShap": 0.1895
+    },
+    {
+      "name": "max_price_month_eur",
+      "meanAbsShap": 0.1494
+    },
+    {
+      "name": "short_term_share",
+      "meanAbsShap": 0.1371
+    },
+    {
+      "name": "logins_7",
+      "meanAbsShap": 0.1057
+    },
+    {
+      "name": "balance_eur_log",
+      "meanAbsShap": 0.0874
+    },
+    {
+      "name": "deleted_services_log",
+      "meanAbsShap": 0.0833
+    },
+    {
+      "name": "tenure_days_log",
+      "meanAbsShap": 0.0781
+    },
+    {
+      "name": "logins_30",
+      "meanAbsShap": 0.0726
+    }
+  ],
+  "onnxSha256": "05c0bc3d301b982561307ff1a97eb2253917cdeb30ae4ed9bd79f6912ed6db55",
+  "parityMaxAbsDiff": 1.7881393432617188E-07,
+  "explain": "treeshap",
+  "note": "Синтетика: метрики — проверка конвейера, а не качество на реальных клиентах."
+}

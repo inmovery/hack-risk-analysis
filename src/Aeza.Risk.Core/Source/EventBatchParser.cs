@@ -17,7 +17,7 @@ public sealed record ParsedEvent(
 }
 
 /// <summary>Разобранный пакет событий</summary>
-/// <param name="Synthetic">Пакет помечен источником как синтетика (симулятор)</param>
+/// <param name="Synthetic">Пакет помечен источником как события симулятора</param>
 /// <param name="Events">События в порядке пакета</param>
 /// <param name="EnvelopeErrors">Ошибки формы пакета (весь пакет отклоняется)</param>
 /// <param name="Warnings">Счётчики предупреждений качества</param>

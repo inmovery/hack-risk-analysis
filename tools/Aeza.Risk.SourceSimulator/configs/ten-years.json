@@ -1,0 +1,29 @@
+{
+  // Мир «как у живого хостинга» за 10 лет: постоянный приток клиентов, ежегодные изменения цен,
+  // сигналы переезда, опрос при уходе и удержание с контрольной группой
+  "customers": 1500,
+  "days": 3650,
+  "existingShare": 0.2,
+  "priceChanges": [
+    { "day": 150, "plan": "vps-s", "percent": 20 },
+    { "day": 270, "plan": "vps-m", "percent": 15 },
+    { "day": 600, "plan": "vps-xs", "percent": 10 },
+    { "day": 900, "plan": "vps-l", "percent": 12 },
+    { "day": 1250, "plan": "vps-s", "percent": 10 },
+    { "day": 1500, "plan": "vps-xl", "percent": 8 },
+    { "day": 1850, "plan": "vps-m", "percent": 10 },
+    { "day": 2200, "plan": "vps-xs", "percent": 15 },
+    { "day": 2550, "plan": "vps-l", "percent": 10 },
+    { "day": 2900, "plan": "vps-s", "percent": 12 },
+    { "day": 3250, "plan": "vps-m", "percent": 8 },
+    { "day": 3500, "plan": "vps-xl", "percent": 10 }
+  ],
+  "extended": {
+    "migrationSignals": true,
+    "backupDownloadsPerDay": 0.008,
+    "dnsEditsPerDay": 0.016,
+    "exitSurveyResponse": 0.35,
+    "retentionHoldoutShare": 0.2,
+    "heterogeneousRetention": true
+  }
+}

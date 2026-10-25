@@ -1,56 +1,75 @@
-/* Дизайн-токены (совпадают с переменными макета) */
+/* Дизайн-токены по брендбуку Aéza 2026 (совпадают с переменными макета Figma).
+   Основные цвета: PANTONE 298 C #4CC6F1, Black C #000000, Cool Gray 1 C #F4F4F4.
+   Дополнительные: PANTONE 534 C #182D48, 7579 C #E97C35, 503 C #ECCFDB.
+   Шрифты: Exo 2 — основной (заголовки, навигация, кнопки, цифры KPI), Inter — дополнительный (таблицы, подписи, пояснения). */
 :root {
-  --gray-0: #FFFFFF; --gray-25: #FAFBFC; --gray-50: #F4F6F8; --gray-100: #EBEEF2; --gray-200: #DCE1E7; --gray-300: #C3CAD3;
-  --gray-400: #8A94A3; --gray-500: #6B7584; --gray-600: #4E5866; --gray-700: #363E4A; --gray-800: #232933; --gray-900: #141921;
-  --cyan-50: #E8F7FD; --cyan-100: #C9EDFA; --cyan-500: #1BA8E0; --cyan-600: #0A8BC2; --cyan-700: #086F9C; --cyan-800: #075E85;
-  --red-50: #FDECEC; --red-100: #F9D2D2; --red-600: #C42B2B; --red-700: #A11F1F;
-  --amber-50: #FFF5E0; --amber-100: #FFE7B3; --amber-500: #E59400; --amber-700: #8F4A00;
-  --green-50: #E7F6EC; --green-100: #C8EBD3; --green-600: #1E7A3C; --green-700: #17612F;
+  --brand-blue: #4CC6F1;
+  --brand-black: #000000;
+  --brand-gray: #F4F4F4;
+  --brand-navy: #182D48;
+  --brand-orange: #E97C35;
+  --brand-pink: #ECCFDB;
 
-  --color-bg-canvas: var(--gray-50);
+  /* Нейтральная шкала от чёрного бренда */
+  --gray-0: #FFFFFF; --gray-50: #F4F4F4; --gray-100: #EBEBEB; --gray-200: #DEDEDE; --gray-300: #C7C7C7;
+  --gray-400: #9A9A9A; --gray-500: #6E6E6E; --gray-600: #4D4D4D; --gray-700: #333333; --gray-800: #1A1A1A; --gray-900: #000000;
+  /* Голубой бренда: заливки и акценты; текст на белом — только тёмные ступени (контраст ≥ 4.5:1) */
+  --blue-50: #EAF8FD; --blue-100: #CDEFFB; --blue-300: #8ADBF6; --blue-500: #4CC6F1; --blue-600: #2CB4E3; --blue-700: #0E7FA8; --blue-800: #0A6385;
+  --navy-50: #E8EDF3; --navy-500: #182D48; --navy-700: #0F1E31;
+  --orange-50: #FDF0E7; --orange-100: #F9DCC8; --orange-500: #E97C35; --orange-700: #A44E14;
+  --pink-50: #F8EDF2; --pink-500: #ECCFDB;
+  --red-50: #FBE9EA; --red-100: #F4C9CC; --red-600: #C4303B; --red-700: #9E1F2A;
+  --green-50: #E6F4EC; --green-600: #1C7A45; --green-700: #155E35;
+
+  --color-bg-canvas: var(--brand-gray);
   --color-bg-surface: var(--gray-0);
-  --color-bg-subtle: var(--gray-25);
+  --color-bg-subtle: #FAFAFA;
   --color-bg-sunken: var(--gray-100);
-  --color-bg-inverse: var(--gray-900);
+  --color-bg-inverse: var(--brand-black);
   --color-border-default: var(--gray-200);
   --color-border-strong: var(--gray-300);
-  --color-text-primary: var(--gray-900);
+  --color-text-primary: var(--brand-black);
   --color-text-secondary: var(--gray-600);
   --color-text-muted: var(--gray-500);
   --color-text-inverse: var(--gray-0);
-  --color-accent-default: var(--cyan-700);
-  --color-accent-hover: var(--cyan-800);
-  --color-accent-subtle: var(--cyan-50);
-  --color-focus-ring: var(--cyan-500);
+  --color-text-on-accent: var(--brand-black);
+  --color-accent-fill: var(--brand-blue);
+  --color-accent-fill-hover: var(--blue-600);
+  --color-accent-fill-pressed: #20A3D0;
+  --color-accent-default: var(--blue-800);
+  --color-accent-hover: var(--navy-500);
+  --color-accent-subtle: var(--blue-50);
+  --color-focus-ring: var(--brand-blue);
   --color-risk-high-fg: var(--red-700);
   --color-risk-high-bg: var(--red-50);
   --color-risk-high-solid: var(--red-600);
-  --color-risk-medium-fg: var(--amber-700);
-  --color-risk-medium-bg: var(--amber-50);
-  --color-risk-medium-solid: var(--amber-500);
-  --color-risk-low-fg: var(--green-700);
-  --color-risk-low-bg: var(--green-50);
-  --color-risk-low-solid: var(--green-600);
+  --color-risk-medium-fg: var(--orange-700);
+  --color-risk-medium-bg: var(--orange-50);
+  --color-risk-medium-solid: var(--brand-orange);
+  --color-risk-low-fg: var(--navy-500);
+  --color-risk-low-bg: var(--navy-50);
+  --color-risk-low-solid: var(--navy-500);
   --color-risk-unknown-fg: var(--gray-600);
   --color-risk-unknown-bg: var(--gray-100);
   --color-risk-unknown-border: var(--gray-400);
-  --color-status-warning-bg: var(--amber-50);
-  --color-status-warning-fg: var(--amber-700);
+  --color-status-warning-bg: var(--orange-50);
+  --color-status-warning-fg: var(--orange-700);
   --color-status-danger-bg: var(--red-50);
   --color-status-danger-fg: var(--red-700);
   --color-status-success-fg: var(--green-700);
-  --color-status-info-bg: var(--cyan-50);
-  --color-status-info-fg: var(--cyan-800);
+  --color-status-info-bg: var(--blue-50);
+  --color-status-info-fg: var(--blue-800);
   --color-chart-planned: var(--gray-300);
-  --color-chart-at-risk: var(--red-600);
+  --color-chart-at-risk: var(--brand-orange);
 
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
-  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-full: 999px;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-full: 999px;
 
-  --elevation-card: 0 1px 2px rgba(20, 25, 33, 0.06);
-  --elevation-overlay: 0 8px 24px rgba(20, 25, 33, 0.16);
-  --focus-ring: 0 0 0 3px var(--color-focus-ring);
+  --elevation-card: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --elevation-overlay: 0 12px 32px rgba(0, 0, 0, 0.18);
+  --focus-ring: 0 0 0 2px var(--gray-0), 0 0 0 4px var(--brand-black);
 
+  --font-display: 'Exo 2 Variable', 'Exo 2', 'Segoe UI', system-ui, sans-serif;
   --font-sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* Text styles: Display/KPI 28/36 600 · H1 22/28 600 · H2 16/24 600 · H3 14/20 600 · Body 14/20 · Small 13/18 · Caption 12/16 */
+  /* Текст: KPI 30/36 Exo 2 800 · H1 24/30 Exo 2 800 · H2 17/24 Exo 2 700 · H3 14/20 Exo 2 700 · Body 14/20 Inter · Small 13/18 · Caption 12/16 */
 }

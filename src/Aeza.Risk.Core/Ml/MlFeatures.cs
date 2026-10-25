@@ -17,6 +17,12 @@ public static class MlFeatures
         // Клиент
         "live_services", "tenure_days_log",
         // Поведение по событиям v2 (дни до момента решения включительно)
+        .. BehaviorNames,
+    ];
+
+    /// <summary>Признаки поведения — одинаковые в схемах услуги и клиента</summary>
+    public static IReadOnlyList<string> BehaviorNames =>
+    [
         "has_behavior", "logins_7", "logins_30", "days_since_login",
         "cpu_7", "cpu_base", "cpu_ratio", "usage_days_7",
         "failed_payments_30", "payments_30_eur_log", "topups_30", "topups_90_eur_log",
@@ -60,14 +66,23 @@ public static class MlFeatures
         var first = customerServices.Select(x => x.CreatedAt).OfType<DateTimeOffset>().DefaultIfEmpty(t).Min();
         v[i++] = Log1P((t - first).TotalDays);
 
+        i = Behavior(b, t, v, i);
+        if (i != Names.Count) throw new InvalidOperationException($"Вектор признаков: {i} значений при {Names.Count} именах");
+        return v;
+    }
+
+    /// <summary>Признаки поведения в порядке <see cref="BehaviorNames"/> с позиции <paramref name="i"/>; возвращает позицию после них</summary>
+    internal static int Behavior(AccountBehavior? b, DateTimeOffset t, float[] v, int i)
+    {
+        var start = i;
         var today = DateOnly.FromDateTime(t.UtcDateTime);
         if (b is null)
         {
             // Нет поведенческих данных: признаки поведения — нейтральные значения, а has_behavior = 0 говорит модели, что это «нет данных»
-            v[Index["cpu_ratio"]] = 1;
-            v[Index["csat_min_30"]] = 5;
-            v[Index["nps_min_90"]] = 10;
-            return v;
+            v[start + 6] = 1; // cpu_ratio
+            v[start + 14] = 5; // csat_min_30
+            v[start + 15] = 10; // nps_min_90
+            return start + 26;
         }
         ActivityDelta W(int days, int endOffset = 0) => b.Sum(today.AddDays(-(days - 1 + endOffset)), today.AddDays(-endOffset));
         var w7 = W(7);
@@ -107,8 +122,7 @@ public static class MlFeatures
         v[i++] = w45.BonusExpired;
         v[i++] = w90.Deletions;
         v[i++] = w90.Renewals;
-        if (i != Names.Count) throw new InvalidOperationException($"Вектор признаков: {i} значений при {Names.Count} именах");
-        return v;
+        return i;
     }
 
     /// <summary>Позиция признака по имени</summary>

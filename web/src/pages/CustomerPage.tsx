@@ -20,13 +20,13 @@ export function CustomerPage() {
         {error && !data && ((error as { status?: number }).status === 404
           ? <Banner tone="warning">Клиента #{id} нет в текущих данных источника.</Banner>
           : <ErrorBox error={error} />)}
-        {data && <Detail d={data.detail} horizon={data.generation.horizonDays} generationId={data.generation.id} />}
+        {data && <Detail d={data.detail} horizon={data.generation.horizonDays} generationId={data.generation.id} mlPrimary={data.generation.scoring === 'ml'} />}
       </main>
     </>
   );
 }
 
-function Detail({ d, horizon, generationId }: { d: CustomerDetail; horizon: number; generationId: number }) {
+function Detail({ d, horizon, generationId, mlPrimary }: { d: CustomerDetail; horizon: number; generationId: number; mlPrimary: boolean }) {
   const c = d.customer;
   const worst = d.services.filter((s) => s.scored).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.id - b.id)[0];
   return (
@@ -48,7 +48,7 @@ function Detail({ d, horizon, generationId }: { d: CustomerDetail; horizon: numb
         <div className="stack" style={{ alignItems: 'flex-end' }}>
           <span className="kpi-value" style={{ color: d.riskLevel === 'high' ? 'var(--color-risk-high-fg)' : undefined }} data-testid="customer-score">{score(d.riskScore)}</span>
           <RiskBadge level={d.riskLevel} />
-          <span className="caption muted">индекс 0–100, не вероятность</span>
+          <span className="caption muted">{mlPrimary ? 'вероятность непродления × 100 (ML)' : 'индекс 0–100, не вероятность'}</span>
         </div>
       </section>
 
@@ -58,7 +58,11 @@ function Detail({ d, horizon, generationId }: { d: CustomerDetail; horizon: numb
         <section className="card" aria-labelledby="why-title">
           <h2 id="why-title">Почему такой риск</h2>
           <p className="caption secondary" style={{ margin: '4px 0 8px' }}>
-            Score клиента = максимум по услугам; score услуги = min(100, Σ вес × сила признака).
+            {!mlPrimary
+              ? 'Score клиента = максимум по услугам; score услуги = min(100, Σ вес × сила признака).'
+              : d.mlShadow?.explain === 'treeshap'
+                ? 'Score клиента = максимум по услугам; score услуги = вероятность непродления по ML-модели × 100. Вклад фактора — на сколько пунктов он сдвигает прогноз от среднего по модели (TreeSHAP): вклады всех факторов в сумме дают score минус средний score.'
+                : 'Score клиента = максимум по услугам; score услуги = вероятность непродления по ML-модели × 100. Вклад фактора — на сколько пунктов score выше, чем был бы при этом факторе как у типичного клиента; вклады не складываются в score.'}
             {worst && ` Худшая услуга: ${worst.name} (${score(worst.score)}${worst.capped ? `, сумма ${score(worst.rawScore)} ограничена 100` : ''}).`}
           </p>
           {d.reasons.length === 0 ? (
@@ -66,6 +70,7 @@ function Detail({ d, horizon, generationId }: { d: CustomerDetail; horizon: numb
           ) : (
             <>
               {d.reasons.filter((r) => r.serviceId === worst?.id).map((r, i) => <ReasonItem key={`w${i}`} r={r} />)}
+              {mlPrimary && d.reasons.length > 0 && <p className="caption muted" style={{ margin: '4px 0 0' }}>Факторы, которые снижают риск, в причины не входят.</p>}
               {d.reasons.some((r) => r.serviceId !== worst?.id) && (
                 <h3 className="small secondary" style={{ marginTop: 12 }}>Другие услуги клиента (не определяют score клиента, но влияют на их деньги)</h3>
               )}
@@ -94,12 +99,12 @@ function Detail({ d, horizon, generationId }: { d: CustomerDetail; horizon: numb
 
       <div className="grid-2-wide">
         <SourceTimeline id={c.id} />
-        {d.churn && <ChurnTypesCard d={d} churn={d.churn} />}
+        {d.churn && <ChurnTypesCard d={d} churn={d.churn} mlPrimary={mlPrimary} />}
       </div>
 
       <BehaviorCard id={c.id} />
 
-      {d.mlShadow && <MlShadowCard shadow={d.mlShadow} services={d.services} />}
+      {d.mlShadow && <MlShadowCard shadow={d.mlShadow} services={d.services} primary={mlPrimary} />}
 
       <section className="card card-flush" aria-labelledby="svc-title">
         <h2 id="svc-title" style={{ padding: '16px 20px 8px' }}>Услуги</h2>
@@ -151,7 +156,7 @@ function ReasonItem({ r }: { r: CustomerDetail['reasons'][number] }) {
       <div className="track" role="img" aria-label={`Вклад ${score(r.contribution)} из 100`}>
         <div className="bar" style={{ width: `${Math.min(100, r.contribution)}%` }} />
       </div>
-      <span className="caption secondary">{r.text} · вес {score(r.weight)} × сила {score(r.value)}</span>
+      <span className="caption secondary">{r.featureKey.startsWith('ml.') ? `${r.text} · модель: +${score(r.contribution)} п. к вероятности` : `${r.text} · вес ${score(r.weight)} × сила ${score(r.value)}`}</span>
     </div>
   );
 }
@@ -192,7 +197,7 @@ function ServiceRow({ s }: { s: CustomerDetail['services'][number] }) {
                   <tr key={f.key}>
                     <td>{f.title}</td>
                     <td className="r">{f.value === null ? <Tag tone="warning">нет данных: {f.missingInputs.join(', ')}</Tag> : score(f.value)}</td>
-                    <td className="r">{score(f.weight)}</td><td className="r">{score(f.contribution)}</td><td className="small secondary">{f.text}</td>
+                    <td className="r">{f.key.startsWith('ml.') ? '—' : score(f.weight)}</td><td className="r">{score(f.contribution)}</td><td className="small secondary">{f.text}</td>
                   </tr>
                 ))}
               </tbody>
@@ -221,13 +226,13 @@ function ChurnChips({ d, churn }: { d: CustomerDetail; churn: ChurnDetail }) {
   );
 }
 
-function ChurnTypesCard({ d, churn }: { d: CustomerDetail; churn: ChurnDetail }) {
+function ChurnTypesCard({ d, churn, mlPrimary }: { d: CustomerDetail; churn: ChurnDetail; mlPrimary: boolean }) {
   return (
     <section className="card stack" aria-labelledby="types-title" data-testid="churn-types-card">
       <h2 id="types-title">Типы оттока</h2>
       <div className="stack" style={{ gap: 4 }}>
         <ChurnChip tone={d.riskLevel === 'unknown' ? 'unknown' : d.riskLevel}>Непродление {d.riskScore === null ? 'нет оценки' : `${score(d.riskScore)} · ${levelLabel[d.riskLevel]}`}</ChurnChip>
-        <span className="small secondary">{d.primaryReason.text}. Индекс, не вероятность.</span>
+        <span className="small secondary">{d.primaryReason.text}.{mlPrimary ? '' : ' Индекс, не вероятность.'}</span>
       </div>
       <div className="stack" style={{ gap: 4 }}>
         <FullChurnChip fc={churn.fullChurn} prefix="Уход целиком" />

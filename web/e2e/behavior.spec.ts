@@ -1,8 +1,20 @@
 import { expect, test } from '@playwright/test';
-import { apiUrl, countReloads } from './helpers';
+import { apiUrl, countReloads, setScoring } from './helpers';
 
 // Поведение клиента по событиям v2 и импорт истории — против работающего стенда (Compose).
 test.describe.configure({ mode: 'serial' });
+
+// Признаки поведения с весом 0 — часть правил: проверяются в режиме правил, после — снова ML (по умолчанию)
+test.beforeAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'rules');
+  await ctx.close();
+});
+test.afterAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'ml');
+  await ctx.close();
+});
 
 const run = `e2e-imp-${Date.now()}`;
 

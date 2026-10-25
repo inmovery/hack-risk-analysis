@@ -18,16 +18,52 @@ public sealed class OnnxShadowRuntime : IDisposable
     /// <summary>Номер загруженной модели</summary>
     public long? LoadedModelId { get; private set; }
 
-    public void Load(long modelId, byte[] onnx)
+    /// <summary>Деревья загруженной модели для точных вкладов; null — пакет без них</summary>
+    public TreeEnsemble? Trees { get; private set; }
+
+    public void Load(long modelId, byte[] onnx, string? treesJson = null)
     {
         lock (_gate)
         {
             if (LoadedModelId == modelId && _session is not null) return;
             var session = Open(onnx);
+            var trees = treesJson is null ? null : TreeEnsembleJson.Parse(treesJson);
             _session?.Dispose();
             _session = session;
+            Trees = trees;
             LoadedModelId = modelId;
         }
+    }
+
+    /// <summary>Проверка trees.json: те же признаки и те же вероятности, что у ONNX, на проверочных строках</summary>
+    public static TreeEnsemble ValidateTrees(byte[] onnx, string treesJson)
+    {
+        TreeEnsemble trees;
+        try
+        {
+            trees = TreeEnsembleJson.Parse(treesJson);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            throw new MlModelRejectedException("trees_invalid", "trees.json — не структура деревьев");
+        }
+        if (!trees.Features.SequenceEqual(MlFeatures.Names) || trees.Trees.Count == 0)
+            throw new MlModelRejectedException("trees_invalid", "trees.json: признаки не совпадают со схемой анализатора или деревьев нет");
+        // Проверочные строки проходят разные ветви: пороги деревьев ± шаг
+        var n = MlFeatures.Names.Count;
+        var rnd = new Random(1);
+        var thresholds = trees.Trees.SelectMany(t => t.Feature.Select((f, i) => (f, t.Threshold[i]))).ToList();
+        const int rows = 64;
+        var probe = new float[rows * n];
+        for (var r = 0; r < rows; r++)
+            foreach (var (f, t) in thresholds.OrderBy(_ => rnd.Next()).Take(n * 2))
+                probe[r * n + f] = (float)(t + (rnd.NextDouble() < 0.5 ? -1 : 1) * (0.01 + Math.Abs(t) * 0.1));
+        using var session = Open(onnx);
+        var p = Run(session, probe, rows, TimeSpan.FromSeconds(10));
+        for (var r = 0; r < rows; r++)
+            if (Math.Abs(trees.Probability(probe.AsSpan(r * n, n)) - p[r]) > 1e-4)
+                throw new MlModelRejectedException("trees_mismatch", "trees.json не совпадает с model.onnx: вклады посчитались бы не для этой модели");
+        return trees;
     }
 
     /// <summary>Вероятности для <paramref name="rows"/> строк; дольше <paramref name="timeout"/> — <see cref="TimeoutException"/></summary>
@@ -109,6 +145,7 @@ public sealed class OnnxShadowRuntime : IDisposable
         {
             _session?.Dispose();
             _session = null;
+            Trees = null;
             LoadedModelId = null;
         }
     }

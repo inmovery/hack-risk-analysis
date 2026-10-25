@@ -5,6 +5,7 @@
 !src/
 !tools/
 !web/
+!test_data_yandex/data.json
 **/bin/
 **/obj/
 **/node_modules/

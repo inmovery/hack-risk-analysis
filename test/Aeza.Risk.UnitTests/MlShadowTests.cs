@@ -147,7 +147,7 @@ public sealed class MlShadowTests
         float[]? seen = null;
         var run = MlShadow.Run(new MlModelRef(7, "v1"), result, data, new Dictionary<long, AccountBehavior>(), AsOf, (batch, rows) =>
         {
-            seen = batch;
+            seen ??= batch; // первый вызов — прогноз, следующие — объяснение
             return Enumerable.Range(0, rows).Select(i => i == 0 ? 0.9f : 0.2f).ToArray();
         });
 

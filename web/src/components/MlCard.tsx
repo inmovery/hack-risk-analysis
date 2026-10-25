@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
-import type { MlMetric, MlShadowDetail, MlStatus } from '../api/types';
+import type { MlMetric, MlShadowDetail, MlStatus, ScoringMode } from '../api/types';
 import { dateTime } from '../format';
 import { Banner, Tag } from './ui';
+import { Button } from './controls';
 
 /** Названия признаков модели для людей */
 export const mlFeatureLabel: Record<string, string> = {
@@ -36,8 +37,8 @@ function MetricRow({ label, m, strong }: { label: string; m: MlMetric | null; st
   );
 }
 
-/** Модель на фактах: статус, сравнение с правилами, тень и проверка на исходах */
-export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
+/** ML-модель: пакет, проверка на отложенном периоде, текущий расчёт и исходы. Режим основного балла выбирается выше на странице. */
+export function MlCard({ ml, isAdmin, primary }: { ml: MlStatus; isAdmin: boolean; primary: ScoringMode }) {
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -64,8 +65,10 @@ export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
   return (
     <section className="card stack" aria-labelledby="ml-title" data-testid="ml-status" data-status={ml.status}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 id="ml-title">Модель на фактах (ML)</h2>
-        {s ? <Tag tone="info" title="Прогнозы рядом с правилами; баллы, уровни, сортировки и деньги считают правила">в тени</Tag> : <Tag>не загружена</Tag>}
+        <h2 id="ml-title">ML-модель</h2>
+        {!s ? <Tag>не загружена</Tag>
+          : primary === 'ml' ? <Tag tone="info" title="Баллы, уровни, сортировки и деньги считает модель">основной балл</Tag>
+          : <Tag title="Прогнозы рядом с правилами; баллы, уровни, сортировки и деньги считают правила">рядом с правилами</Tag>}
       </div>
 
       {!s && (
@@ -73,13 +76,12 @@ export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
           <div className="row" style={{ justifyContent: 'space-between' }}><span className="small secondary">Исходов созрело (продлено / не продлено)</span><strong className="num">{ml.labels.renewed} / {ml.labels.notRenewed}</strong></div>
           <div className="row" style={{ justifyContent: 'space-between' }}><span className="small secondary">Нужно каждого класса</span><strong className="num">≥ {ml.labels.requiredPerClass}</strong></div>
           <div className="row" style={{ justifyContent: 'space-between' }}><span className="small secondary">Ждут исхода</span><strong className="num">{ml.labels.pending}</strong></div>
-          <p className="caption muted">{ml.reason} Обучение — офлайн на журнале событий; модель включается только в тени и заменит правила, лишь если выиграет на реальных исходах.</p>
+          <p className="caption muted">{ml.reason} Обучение — офлайн на журнале событий; пакет модели загружается здесь.</p>
         </>
       )}
 
       {s && (
         <>
-          {s.model.synthetic && <Banner tone="warning">Модель обучена на синтетике симулятора: цифры ниже проверяют конвейер, а не качество на реальных клиентах.</Banner>}
           <p className="small" style={{ margin: 0 }}>
             <strong>{s.model.version}</strong><br />
             <span className="secondary">{kindLabel[s.model.kind] ?? s.model.kind} · загружена {dateTime(s.model.uploadedAt)} · {s.model.uploadedBy}</span>
@@ -124,7 +126,7 @@ export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
               ? <>На реальных исходах ({s.online.matured}, «не продлено» {s.online.notRenewed}): PR-AUC модели <strong className="num">{n3(s.online.model.prAuc)}</strong>, правил <strong className="num">{n3(s.online.rules.prAuc)}</strong>.</>
               : <>Прогнозов в точках решения: <strong className="num">{s.online.predictions}</strong>, исход известен у {s.online.matured}. Качество на реальных исходах покажем от 30 исходов каждого класса.</>}
           </p>
-          <p className="caption muted">{s.model.synthetic ? 'Прогнозы в тени не меняют баллы, уровни, сортировки и деньги.' : s.note}</p>
+          <p className="caption muted">{s.note}</p>
         </>
       )}
 
@@ -132,8 +134,8 @@ export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
         <div className="toolbar">
           <input ref={input} type="file" accept=".zip" aria-label="Пакет модели (model-bundle.zip)" data-testid="ml-file" hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
-          <button className="btn btn-sm" disabled={busy} onClick={() => input.current?.click()} data-testid="ml-upload">{s ? 'Заменить модель' : 'Загрузить модель (.zip)'}</button>
-          {s && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void off()} data-testid="ml-off">Выключить</button>}
+          <Button variant={s ? 'secondary' : 'primary'} size="sm" loading={busy} onClick={() => input.current?.click()} testId="ml-upload">{s ? 'Заменить модель' : 'Загрузить модель (.zip)'}</Button>
+          {s && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void off()} testId="ml-off">Отключить модель</Button>}
         </div>
       )}
       {error && <Banner tone="danger" role="alert">{error}</Banner>}
@@ -141,21 +143,33 @@ export function MlCard({ ml, isAdmin }: { ml: MlStatus; isAdmin: boolean }) {
   );
 }
 
-/** Теневая модель в карточке клиента: не влияет на score */
-export function MlShadowCard({ shadow, services }: { shadow: MlShadowDetail; services: { id: number; name: string }[] }) {
+/** Модель в карточке клиента: в тени не влияет на score, в режиме ML — и есть score */
+export function MlShadowCard({ shadow, services, primary = false }: { shadow: MlShadowDetail; services: { id: number; name: string }[]; primary?: boolean }) {
   const name = (id: number | null) => services.find((s) => s.id === id)?.name ?? `#${id}`;
   const pct = (p: number) => `${Math.round(p * 100)}%`;
+  const top = shadow.services.find((s) => s.serviceId === shadow.serviceId);
+  const raising = (top?.drivers ?? []).filter((d) => d.delta > 0).slice(0, 4);
   return (
     <section className="card stack" aria-labelledby="mls-title" data-testid="ml-shadow" data-state={shadow.state}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 id="mls-title">Модель в тени</h2>
-        <Tag tone="info" title={`Модель ${shadow.modelVersion}`}>не влияет на score</Tag>
+        <h2 id="mls-title">{primary ? 'Модель ML' : 'Модель в тени'}</h2>
+        {primary
+          ? <Tag tone="warning" title={`Модель ${shadow.modelVersion}`}>основной балл</Tag>
+          : <Tag tone="info" title={`Модель ${shadow.modelVersion}`}>не влияет на score</Tag>}
       </div>
       {shadow.state === 'scored' && shadow.probability != null && (
         <>
           <p className="small" style={{ margin: 0 }}>
             Вероятность «не продлено» по модели: <strong className="num">{pct(shadow.probability)}</strong> — {name(shadow.serviceId)}.
           </p>
+          {raising.length > 0 && (
+            <>
+              <h3 className="small secondary">Что поднимает прогноз ({shadow.explain === 'treeshap' ? 'относительно среднего по модели, TreeSHAP' : 'по сравнению с типичным клиентом'})</h3>
+              <ul className="small" style={{ margin: 0, paddingLeft: 16 }} data-testid="ml-drivers">
+                {raising.map((d) => <li key={d.key}><strong>{d.title}</strong> +{Math.round(d.delta * 100)} п. — {d.text}</li>)}
+              </ul>
+            </>
+          )}
           {shadow.services.length > 1 && (
             <ul className="small" style={{ margin: 0, paddingLeft: 16 }}>
               {shadow.services.map((s) => (
@@ -167,7 +181,11 @@ export function MlShadowCard({ shadow, services }: { shadow: MlShadowDetail; ser
       )}
       {shadow.state === 'out_of_scope' && <p className="small secondary" style={{ margin: 0 }}>Нет услуг со сроком в окне модели: за 14 дней и ближе (неделя — за 3 дня), active или suspended.</p>}
       {shadow.state === 'failed' && <p className="small secondary" style={{ margin: 0 }}>Модель не выполнилась в этом расчёте; score и деньги посчитаны правилами.</p>}
-      <p className="caption muted">Прогноз сверяется с исходами сроков и не меняет балл, уровень, сортировку и деньги. Как модель обучена и проверена — на странице «Модель».</p>
+      <p className="caption muted">
+        {primary
+          ? 'Балл клиента — эта вероятность × 100; правила в балл не входят. Как модель обучена и проверена — на странице «Модель».'
+          : 'Прогноз сверяется с исходами сроков и не меняет балл, уровень, сортировку и деньги. Как модель обучена и проверена — на странице «Модель».'}
+      </p>
     </section>
   );
 }

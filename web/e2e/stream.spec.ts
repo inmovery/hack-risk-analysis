@@ -1,8 +1,20 @@
 import { expect, test } from '@playwright/test';
-import { apiUrl, countReloads } from './helpers';
+import { apiUrl, countReloads, setScoring } from './helpers';
 
 // Поток событий, типы оттока и выгрузка — против работающего стенда (Compose).
 test.describe.configure({ mode: 'serial' });
+
+// Объяснения индексов оттока проверяются в режиме правил; по умолчанию основной балл — ML
+test.beforeAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'rules');
+  await ctx.close();
+});
+test.afterAll(async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+  await setScoring(ctx.request, 'ml');
+  await ctx.close();
+});
 
 const ingestToken = process.env.INGEST_TOKEN ?? '';
 
@@ -85,7 +97,8 @@ test('модель: определения оттока и статус ML ви�
   await page.goto('/model');
   await expect(page.getByTestId('churn-settings')).toBeVisible();
   await expect(page.getByTestId('churn-n')).toHaveValue(/\d+/);
-  await expect(page.getByTestId('ml-status')).toContainText('Исходов созрело');
+  await expect(page.getByTestId('ml-status')).toContainText('ML-модель');
+  await expect(page.getByTestId('ml-status')).toContainText(/Исходов созрело|Отложенный период/);
   await page.goto('/source');
   await expect(page.getByTestId('connector-snapshot')).toBeVisible();
   await expect(page.getByTestId('connector-http-push')).toBeVisible();

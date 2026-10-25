@@ -25,6 +25,9 @@ public static class Policies
     /// <summary>Загрузка тестовых данных (admin или ingest-токен)</summary>
     public const string SourceWriter = "source-writer";
 
+    /// <summary>Симулятор источника: инструкции и отчёты (Bearer INGEST_TOKEN)</summary>
+    public const string SimulationAgent = "simulation-agent";
+
     /// <summary>Статус своего импорта: пользователи панели или токен входящего коннектора (только счётчики, без данных клиентов)</summary>
     public const string ImportStatus = "import-status";
 }

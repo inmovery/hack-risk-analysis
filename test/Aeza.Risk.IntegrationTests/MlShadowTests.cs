@@ -60,6 +60,10 @@ public sealed class MlShadowTests(PostgresFixture pg) : DbTestBase(pg)
     {
         using var c = await Factory.LoginAsync();
         await AppFactory.WaitForGenerationAsync(c, s => s["generation"] is not null);
+        // По умолчанию основной балл — ML; тень проверяется в режиме правил
+        var rules = await c.PutAsJsonAsync("/api/v1/ml/scoring", new { primary = "rules" });
+        Assert.Equal(HttpStatusCode.Accepted, rules.StatusCode);
+        await AppFactory.WaitForGenerationAsync(c, s => s["generation"]!["scoring"]?.GetValue<string>() == "rules");
         var before = await ScoresAsync(c);
         Assert.Equal("not_trained", (await c.GetFromJsonAsync<JsonObject>("/api/v1/ml/status"))!["status"]!.GetValue<string>());
 
@@ -95,7 +99,7 @@ public sealed class MlShadowTests(PostgresFixture pg) : DbTestBase(pg)
         Assert.True(s["offline"]!["modelMetrics"]!["prAuc"]!.GetValue<double>() > s["offline"]!["rules"]!["prAuc"]!.GetValue<double>());
         Assert.Equal(2, s["online"]!["predictions"]!.GetValue<int>());
         Assert.Null(s["online"]!["model"]); // исходов ещё нет: качество на реальных данных не показывается
-        Assert.Contains("синтетик", s["note"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Contains("Прогнозы в тени не меняют", s["note"]!.GetValue<string>(), StringComparison.Ordinal);
 
         using (var scope = Factory.Services.CreateScope())
         {

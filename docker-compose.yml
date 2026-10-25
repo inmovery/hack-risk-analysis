@@ -1,5 +1,6 @@
 # Серверный вариант: docker compose up -d (секреты — в .env по .env.example).
 # Профили: tls — nginx + Let's Encrypt; observability — Prometheus и Grafana.
+# Данные приходят только событиями симулятора (source-sim); EVENTS_ONLY=false — тестовые данные снимком в пустую БД.
 name: aeza-risk
 
 services:
@@ -45,13 +46,14 @@ services:
       ENV_Auth__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?Задайте BOOTSTRAP_ADMIN_PASSWORD в .env (не короче 12 символов)}
       ENV_Auth__AnalystLogin: ${BOOTSTRAP_ANALYST_LOGIN:-}
       ENV_Auth__AnalystPassword: ${BOOTSTRAP_ANALYST_PASSWORD:-}
-      ENV_Auth__IngestToken: ${INGEST_TOKEN:-}
+      ENV_Auth__IngestToken: ${INGEST_TOKEN:?Задайте INGEST_TOKEN в .env (им симулятор отправляет события)}
+      ENV_Simulation__EventsOnly: ${EVENTS_ONLY:-true}
       ENV_Auth__SecureCookies: ${SECURE_COOKIES:-false}
       ENV_Proxy__Enabled: ${BEHIND_PROXY:-false}
       ENV_CorsOrigins__0: ${CORS_ORIGIN:-}
       ENV_Spa__Enabled: ${SPA_ENABLED:-true}
       ENV_Docs__RequireAuth: ${DOCS_REQUIRE_AUTH:-false}
-      # Тестовые данные загружаются только в пустую БД
+      # Только при EVENTS_ONLY=false: тестовые данные загружаются в пустую БД
       ENV_Seed__File: /seed/data.json
       ENV_Seed__SourceAsOf: "2026-10-19T15:00:00Z"
       ENV_Seed__Label: organizer:test_data_yandex
@@ -62,6 +64,25 @@ services:
     depends_on:
       migrator:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Симулятор системы-источника: берёт настройки у сервиса (GET /api/v1/simulation/agent) и шлёт события
+  source-sim:
+    image: aeza-risk-app:${APP_VERSION:-local}
+    pull_policy: never
+    entrypoint: ["dotnet", "/app/simulator/Aeza.Risk.SourceSimulator.dll"]
+    environment:
+      SIM_MODE: agent
+      SIM_API: http://app:5000
+      SIM_INGEST_TOKEN: ${INGEST_TOKEN}
+      SIM_INIT: /app/simulator/organizer/data.json
+      SIM_DIR: /state
+    volumes:
+      - simstate:/state
+    healthcheck:
+      disable: true
+    depends_on:
+      - app
     restart: unless-stopped
 
   nginx:
@@ -128,6 +149,7 @@ services:
 
 volumes:
   pgdata:
+  simstate:
   promdata:
   grafanadata:
   letsencrypt:

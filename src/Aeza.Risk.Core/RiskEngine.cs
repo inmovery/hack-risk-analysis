@@ -38,7 +38,8 @@ public sealed record EngineSummary(
     IReadOnlyDictionary<string, int> ServicesByStatus, int HorizonDays,
     long PlannedRenewalsMinor, long UnfundedMinor, long AtRiskMinor, IReadOnlyDictionary<string, LevelMoney> MoneyByLevel,
     long UnscoredPlannedMinor, long UnfundedUnknownPlannedMinor, IReadOnlyDictionary<string, int> QualityFlags, decimal ScoreSum, int ScoredCustomers,
-    IReadOnlyDictionary<string, int> FullChurnByLevel, IReadOnlyDictionary<string, int> FullChurnByState, IReadOnlyDictionary<string, int> PaymentTrendByState);
+    IReadOnlyDictionary<string, int> FullChurnByLevel, IReadOnlyDictionary<string, int> FullChurnByState, IReadOnlyDictionary<string, int> PaymentTrendByState,
+    LossInterval? AtRiskInterval = null);
 
 public sealed record EngineResult(
     DateTimeOffset AsOf, string EngineVersion, IReadOnlyList<CustomerAssessment> Customers, EngineSummary Summary, IReadOnlyList<ForecastDay> Forecast);
@@ -62,7 +63,9 @@ public sealed class RiskEngine
     /// <param name="settings">Ревизия модели</param>
     /// <param name="asOf">Момент оценки</param>
     /// <param name="behavior">Поведение клиентов на момент оценки (проекция событий v2); нет клиента — нет данных</param>
-    public EngineResult Evaluate(SourceData source, ModelSettings settings, DateTimeOffset asOf, IReadOnlyDictionary<long, AccountBehavior>? behavior = null)
+    /// <param name="ml">Основной балл по ML вместо правил; деньги, уровни и индикаторы считаются от него так же</param>
+    public EngineResult Evaluate(
+        SourceData source, ModelSettings settings, DateTimeOffset asOf, IReadOnlyDictionary<long, AccountBehavior>? behavior = null, MlPrimary? ml = null)
     {
         var horizonEnd = asOf.AddDays(settings.HorizonDays);
         var window = TimeSpan.FromDays(settings.UrgencyWindowDays);
@@ -78,10 +81,10 @@ public sealed class RiskEngine
         {
             var services = servicesByOwner[account.Id].ToList();
             var transactions = services.SelectMany(s => txByService[s.Id]).ToList();
-            customers.Add(EvaluateCustomer(account, services, transactions, lastTx, settings, asOf, horizonEnd, window, forecast, behavior?.GetValueOrDefault(account.Id)));
+            customers.Add(EvaluateCustomer(account, services, transactions, lastTx, settings, asOf, horizonEnd, window, forecast, behavior?.GetValueOrDefault(account.Id), ml));
         }
 
-        var summary = Summarize(customers, settings);
+        var summary = Summarize(customers, settings, ml is not null);
         var days = forecast.Select(kv => new ForecastDay(kv.Key, kv.Value.Planned, RoundMinor(kv.Value.AtRisk), kv.Value.Count)).ToList();
         return new EngineResult(asOf, Version, customers, summary, days);
     }
@@ -89,7 +92,7 @@ public sealed class RiskEngine
     private CustomerAssessment EvaluateCustomer(
         AccountInput account, List<ServiceInput> services, List<TransactionInput> transactions, Dictionary<long, TransactionInput> lastTx, ModelSettings settings,
         DateTimeOffset asOf, DateTimeOffset horizonEnd, TimeSpan window, SortedDictionary<DateOnly, (long Planned, decimal AtRisk, int Count)> forecast,
-        AccountBehavior? behavior)
+        AccountBehavior? behavior, MlPrimary? ml)
     {
         var flags = new SortedSet<string>(StringComparer.Ordinal);
         var bonusState = SourceEnums.ParseBonusState(account.BonusState);
@@ -147,6 +150,27 @@ public sealed class RiskEngine
 
             var scored = !results.Where((r, i) => r.Value is null && r.Weight > 0 && !_features[i].Behavioral).Any();
             decimal? score = scored ? Math.Round(Math.Min(100m, raw), ScorePrecision, MidpointRounding.ToEven) : null;
+            if (ml is not null)
+            {
+                // Только ML: вклад правил в балл не входит; услуга вне окна модели — «нет оценки», а не 0
+                results.Clear();
+                missing.Clear();
+                if (ml.Services.TryGetValue(s.Id, out var m))
+                {
+                    // Балл — вероятность; причины — факторы, которые поднимают её выше, чем у типичного клиента
+                    var p = Math.Round((decimal)m.Probability, 4, MidpointRounding.ToEven);
+                    results.AddRange(m.Drivers.Where(d => d.Delta >= MlExplain.MinDelta).Select(d => MlDriverFeature(ml, d, p)));
+                    raw = Math.Round(p * 100m, ScorePrecision, MidpointRounding.ToEven);
+                    score = raw;
+                    scored = true;
+                }
+                else
+                {
+                    missing.Add(MlPrimary.OutOfScopeInput);
+                    score = null;
+                    scored = false;
+                }
+            }
             var planned = sf?.PlannedMinor ?? 0;
             var atRisk = score is { } sc ? planned * sc / 100m : 0m;
             if (sf is not null)
@@ -174,7 +198,7 @@ public sealed class RiskEngine
             : ScoreState.Complete;
 
         var reasons = BuildReasons(scoredServices);
-        var primary = PrimaryReason(state, customerScore, scoredServices, assessments);
+        var primary = PrimaryReason(state, customerScore, scoredServices, assessments, ml is not null);
         var atRiskExact = scoredServices.Aggregate(0m, (acc, a) => acc + a.AtRiskExact);
         var unscoredPlanned = assessments.Where(a => a.Renewable && !a.Scored).Aggregate(0L, (acc, a) => checked(acc + a.PlannedMinor));
         // Баланс неизвестен → непокрытая часть неизвестна (unknown ≠ 0): в U не входит, учитывается отдельно.
@@ -196,7 +220,7 @@ public sealed class RiskEngine
             .SelectMany(s => s.Features.Where(f => f.Contribution > 0).Select(f => (s, f)))
             .OrderByDescending(x => x.f.Contribution)
             .ThenByDescending(x => x.s.Score)
-            .ThenBy(x => order[x.f.Key])
+            .ThenBy(x => order.GetValueOrDefault(x.f.Key, int.MaxValue))
             .ThenBy(x => x.s.Id)
             // Признак поведения — про клиента, а не про услугу: одна причина, а не по разу на каждую услугу
             .DistinctBy(x => behavioral.Contains(x.f.Key) ? x.f.Key : $"{x.f.Key}#{x.s.Id}")
@@ -204,7 +228,7 @@ public sealed class RiskEngine
             .ToList();
     }
 
-    private Reason PrimaryReason(ScoreState state, decimal? score, List<ServiceAssessment> scored, List<ServiceAssessment> all)
+    private Reason PrimaryReason(ScoreState state, decimal? score, List<ServiceAssessment> scored, List<ServiceAssessment> all, bool ml)
     {
         var empty = new Dictionary<string, object?>();
         if (state == ScoreState.NoRenewableServices)
@@ -213,6 +237,10 @@ public sealed class RiskEngine
             var text = all.Count == 0 ? "Нет услуг — оценивать нечего" : $"Нет продлеваемых услуг ({statuses}): продление невозможно или услуга уже удалена";
             return new Reason("no_renewable_services", "", "Нет оценки", text, null, 0, 0, 0, empty);
         }
+        if (score is null && ml)
+            return new Reason("ml_out_of_scope", "", "Нет оценки",
+                "Вне окна ML-модели: модель оценивает услуги active и suspended за 14 и 7 дней до срока (недельные — за 3 дня), у клиента сейчас таких нет",
+                null, 0, 0, 0, empty);
         if (score is null)
         {
             var missing = string.Join(", ", all.SelectMany(a => a.MissingInputs).Distinct());
@@ -220,13 +248,26 @@ public sealed class RiskEngine
         }
         var order = _features.Select((f, i) => (f.Key, i)).ToDictionary(x => x.Key, x => x.i);
         var worst = scored.Where(s => s.Score == score).OrderBy(s => s.Id).First();
-        var top = worst.Features.Where(f => f.Contribution > 0).OrderByDescending(f => f.Contribution).ThenBy(f => order[f.Key]).FirstOrDefault();
+        var top = worst.Features.Where(f => f.Contribution > 0).OrderByDescending(f => f.Contribution).ThenBy(f => order.GetValueOrDefault(f.Key, int.MaxValue)).FirstOrDefault();
+        if (top is null && ml) return new Reason(MlPrimary.FeatureKey, "", "Прогноз ML",
+            $"Вероятность непродления {Fmt.Num(score.Value)} %: ни один фактор не повышает риск сильнее, чем у типичного клиента", worst.Id, 0, 0, 0, empty);
         if (top is null) return new Reason("no_risk_signals", "", "Нет вкладов в индекс",
             "Индекс 0: ни один признак не дал вклада — ожидающих оплат и выключенных услуг нет, ближайшие сроки и непокрытые продления дальше окна срочности", worst.Id, 0, 0, 0, empty);
         return new Reason(top.Key, top.Key, top.Title, top.Text, worst.Id, top.Value ?? 0m, top.Weight, top.Contribution, top.Evidence);
     }
 
-    private static EngineSummary Summarize(List<CustomerAssessment> customers, ModelSettings settings)
+    /// <summary>Фактор прогноза ML: вклад — на сколько пунктов балл выше, чем был бы при этом факторе как у типичного клиента</summary>
+    private static FeatureResult MlDriverFeature(MlPrimary ml, MlDriver d, decimal probability)
+    {
+        var delta = Math.Round((decimal)d.Delta, 4, MidpointRounding.ToEven);
+        var evidence = new Dictionary<string, object?>
+        {
+            ["delta"] = delta, ["probability"] = probability, ["modelId"] = ml.Model.Id, ["modelVersion"] = ml.Model.Version,
+        };
+        return new FeatureResult(MlPrimary.DriverPrefix + d.Key, d.Title, delta, 0m, Math.Round(delta * 100m, 1, MidpointRounding.ToEven), [], evidence, d.Text);
+    }
+
+    private static EngineSummary Summarize(List<CustomerAssessment> customers, ModelSettings settings, bool ml)
     {
         var levels = new[] { RiskLevel.High, RiskLevel.Medium, RiskLevel.Low, RiskLevel.Unknown };
         var byLevel = levels.ToDictionary(l => l.ToApi(), l => customers.Count(c => c.Level == l));
@@ -258,7 +299,9 @@ public sealed class RiskEngine
             scoredCustomers.Count,
             levels.ToDictionary(l => l.ToApi(), l => customers.Count(c => c.FullChurn.Level == l)),
             FullChurnStates.All.ToDictionary(st => st, st => customers.Count(c => c.FullChurn.State == st)),
-            PaymentTrendStates.All.ToDictionary(st => st, st => customers.Count(c => c.PaymentTrend.State == st)));
+            PaymentTrendStates.All.ToDictionary(st => st, st => customers.Count(c => c.PaymentTrend.State == st)),
+            // Балл ML — вероятность, поэтому у выручки под риском есть интервал; индекс правил вероятностью не является
+            ml ? ExpectedLoss.Of(customers.SelectMany(c => c.Services).Where(s => s.Score is not null).Select(s => (s.PlannedMinor, (double)(s.Score!.Value / 100m)))) : null);
     }
 
     public static long RoundMinor(decimal value) => (long)Math.Round(value, 0, MidpointRounding.ToEven);

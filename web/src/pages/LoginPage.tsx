@@ -3,6 +3,8 @@ import { Navigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, apiUrl } from '../api/client';
 import { Banner } from '../components/ui';
+import { Button } from '../components/controls';
+import { BrandLines } from '../components/icons';
 
 /** Только относительный путь этого же сайта (защита от open redirect, включая `//host` и `/\host`). */
 export function safeReturnUrl(raw: string | null): string {
@@ -47,8 +49,12 @@ export function LoginPage() {
 
   return (
     <main className="login-page">
+      <BrandLines className="login-pattern" />
       <form className="card login-card" onSubmit={submit} aria-labelledby="login-title" noValidate>
-        <h1 id="login-title">Aeza · Risk</h1>
+        <div className="row" style={{ gap: 12 }}>
+          <span className="brand-mark brand-mark-dark" aria-hidden="true">é</span>
+          <h1 id="login-title">Aéza · Risk</h1>
+        </div>
         <p className="small secondary">Вход для маркетологов и администраторов модели</p>
         {(sessionExpired || params.get('expired')) && <Banner tone="warning">Сессия истекла — войдите снова.</Banner>}
         <label className="field">
@@ -65,9 +71,9 @@ export function LoginPage() {
             {error}
           </p>
         )}
-        <button className="btn btn-primary" type="submit" disabled={busy || !form.login || !form.password}>
-          {busy ? 'Вход…' : 'Войти'}
-        </button>
+        <Button variant="primary" type="submit" loading={busy} disabled={!form.login || !form.password}>
+          Войти
+        </Button>
         <p className="caption muted">Ошибка входа не раскрывает, существует ли логин. После 5 неудачных попыток вход блокируется на 5 минут.</p>
       </form>
     </main>

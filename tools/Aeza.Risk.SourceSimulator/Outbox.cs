@@ -52,7 +52,12 @@ public sealed class SenderOptions
     public double Shuffle { get; set; }
     public double Duplicate { get; set; }
     public ulong ChaosSeed { get; set; } = 1;
+    /// <summary>Ревизия snapshot системы (заголовок X-Simulation-World): анализатор отвечает 409, если snapshot системы уже сменился</summary>
+    public string? World { get; set; }
 }
+
+/// <summary>Анализатор перешёл к другому snapshot системы: события этого snapshot системы больше не нужны</summary>
+public sealed class WorldChangedException() : Exception("Snapshot системы симуляции сменился");
 
 /// <summary>Итог отправки</summary>
 public sealed record SendTotals(long Batches, long Events, long Applied, long Recorded, long Duplicates, long Rejected, long Stale);
@@ -60,6 +65,8 @@ public sealed record SendTotals(long Batches, long Events, long Applied, long Re
 /// <summary>Исходящий коннектор источника: outbox-файл JSONL → пакеты POST /api/v1/source/events</summary>
 public sealed class OutboxSender(HttpClient http, string outboxPath, string cursorPath, string runId, SenderOptions options, ILogger log)
 {
+    public const string WorldHeader = "X-Simulation-World";
+
     private readonly Rng _chaos = new(options.ChaosSeed);
     private int _batchSize = options.BatchSize;
     private long _batches, _events, _applied, _recorded, _duplicates, _rejected, _stale;
@@ -72,8 +79,27 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
     /// <summary>Остановить после стольких пакетов (тесты: «падение» отправителя посередине)</summary>
     public int? StopAfterBatches { get; set; }
 
+    /// <summary>Анализатор ответил, что snapshot системы сменился: отправка остановлена</summary>
+    public bool WorldChanged { get; private set; }
+
+    /// <summary>Когда анализатор подтвердил последний пакет</summary>
+    public DateTimeOffset? LastAckAt { get; private set; }
+
     /// <summary>Отправлять, пока не отменят</summary>
     public async Task RunAsync(Func<long> committed, Func<DateTimeOffset> generatedThrough, bool stopWhenDrained, CancellationToken ct)
+    {
+        try
+        {
+            await SendLoopAsync(committed, generatedThrough, stopWhenDrained, ct);
+        }
+        catch (WorldChangedException)
+        {
+            WorldChanged = true;
+            log.LogInformation("Snapshot системы {World} больше не текущий: отправка остановлена", options.World);
+        }
+    }
+
+    private async Task SendLoopAsync(Func<long> committed, Func<DateTimeOffset> generatedThrough, bool stopWhenDrained, CancellationToken ct)
     {
         var sent = 0;
         while (!ct.IsCancellationRequested)
@@ -93,6 +119,7 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
             Cursor.Offset += bytes;
             Cursor.Events += lines.Count;
             Cursor.Save(cursorPath);
+            LastAckAt = DateTimeOffset.UtcNow;
             if (options.Duplicate > 0 && _chaos.Chance(options.Duplicate))
             {
                 // Ответ «потерялся» — источник повторяет тот же пакет: анализатор отвечает duplicate
@@ -180,10 +207,13 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
             TimeSpan wait;
             try
             {
-                using var content = new StringContent(body, Encoding.UTF8, "application/json");
-                using var resp = await http.PostAsync("/api/v1/source/events", content, ct);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/source/events");
+                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                if (options.World is { } world) request.Headers.Add(WorldHeader, world);
+                using var resp = await http.SendAsync(request, ct);
                 var text = await resp.Content.ReadAsStringAsync(ct);
                 if (resp.StatusCode is HttpStatusCode.OK or HttpStatusCode.Accepted) return JsonNode.Parse(text)?.AsObject() ?? new JsonObject();
+                if (resp.StatusCode == HttpStatusCode.Conflict && IsWorldChanged(text)) throw new WorldChangedException();
                 if (resp.StatusCode == HttpStatusCode.RequestEntityTooLarge && _batchSize > 1)
                 {
                     _batchSize = Math.Max(1, _batchSize / 2);
@@ -215,6 +245,18 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
         }
     }
 
+    private static bool IsWorldChanged(string problem)
+    {
+        try
+        {
+            return JsonNode.Parse(problem) is JsonObject o && o["code"] is JsonValue v && v.TryGetValue<string>(out var code) && code == "simulation_world_changed";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private TimeSpan Next(TimeSpan delay) => delay * 2 > options.MaxDelay ? options.MaxDelay : delay * 2;
 
     private void Account(JsonObject r, int count)
@@ -237,7 +279,9 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
     private async Task SendWatermarkAsync(DateTimeOffset generatedThrough, bool force, CancellationToken ct)
     {
         if (!force && DateTimeOffset.UtcNow - _lastWatermarkSent < options.WatermarkEvery) return;
-        var upTo = FirstPendingOccurredAt() is { } first ? first.AddMilliseconds(-1) : generatedThrough;
+        var (pending, first) = FirstPending();
+        if (pending && first is null) return; // впереди записи без времени (начальное состояние v1): подтверждать нечего
+        var upTo = first is { } f ? f.AddMilliseconds(-1) : generatedThrough;
         if (Cursor.Watermark is { } prev && upTo <= prev)
         {
             _lastWatermarkSent = DateTimeOffset.UtcNow;
@@ -257,13 +301,13 @@ public sealed class OutboxSender(HttpClient http, string outboxPath, string curs
         log.LogInformation("Водяной знак: всё до {UpTo} отправлено", Iso.Format(upTo));
     }
 
-    private DateTimeOffset? FirstPendingOccurredAt()
+    private (bool Pending, DateTimeOffset? OccurredAt) FirstPending()
     {
-        if (!File.Exists(outboxPath) || new FileInfo(outboxPath).Length <= Cursor.Offset) return null;
+        if (!File.Exists(outboxPath) || new FileInfo(outboxPath).Length <= Cursor.Offset) return (false, null);
         var (lines, _) = ReadBatch(Cursor.Offset + 64 * 1024);
-        if (lines.Count == 0) return null;
+        if (lines.Count == 0) return (false, null);
         using var doc = JsonDocument.Parse(lines[0]);
-        return doc.RootElement.TryGetProperty("occurredAt", out var o) ? Iso.Parse(o.GetString()!) : null;
+        return (true, doc.RootElement.TryGetProperty("occurredAt", out var o) ? Iso.Parse(o.GetString()!) : null);
     }
 
     /// <summary>Перестановка внутри пакета без нарушения порядка в пределах аккаунта</summary>

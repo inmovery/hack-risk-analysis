@@ -72,7 +72,7 @@ export function SourcePage() {
           <section className="card stack" aria-labelledby="cur-title">
             <div className="row-wrap" style={{ alignItems: 'center', gap: 8 }}>
               <h2 id="cur-title">Тестовые данные{current ? ` · ревизия ${current.revision}` : ''}</h2>
-              {current && <Tag tone={current.synthetic ? 'warning' : 'info'}>{current.synthetic ? 'Синтетика / демо-изменение' : JSON.parse(current.provenance).label?.startsWith('organizer') ? 'Тестовый набор организаторов' : 'Данные источника'}</Tag>}
+              {current && <Tag tone={current.synthetic ? 'warning' : 'info'}>{current.synthetic ? 'Данные симулятора' : JSON.parse(current.provenance).label?.startsWith('organizer') ? 'Тестовый набор организаторов' : 'Данные источника'}</Tag>}
               {summary.data?.generation.sourceKind === 'stream' && <Tag tone="info">База · поверх событий потока</Tag>}
               {summary.data?.generation.sourceKind === 'snapshot' && summary.data.generation.sourceAgeSeconds > 24 * 3600 && <Tag tone="warning">Устарел: {age(summary.data.generation.sourceAgeSeconds)}</Tag>}
             </div>
@@ -146,7 +146,7 @@ export function SourcePage() {
                     <td className="num">r{s.revision} {s.active && <Tag tone="info">активный</Tag>}</td>
                     <td>{dateTime(s.sourceAsOf)}</td><td>{dateTime(s.receivedAt)}</td>
                     <td className="num">{s.counts.accounts} · {s.counts.services} · {s.counts.transactions}</td>
-                    <td>{s.actor}</td><td>{s.synthetic ? 'синтетика' : 'источник'}</td>
+                    <td>{s.actor}</td><td>{s.synthetic ? 'симулятор' : 'источник'}</td>
                   </tr>
                 ))}
               </tbody>

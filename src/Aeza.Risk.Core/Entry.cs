@@ -31,6 +31,11 @@ public static class Entry
         services.AddOptionsWithValidateOnStart<StreamOptions>()
             .BindConfiguration(StreamOptions.Section)
             .ValidateDataAnnotations();
+        services.AddOptionsWithValidateOnStart<SimulationOptions>()
+            .BindConfiguration(SimulationOptions.Section)
+            .ValidateDataAnnotations();
+        services.AddOptionsWithValidateOnStart<MlOptions>()
+            .BindConfiguration(MlOptions.Section);
         services.AddOptionsWithValidateOnStart<MetricsOptions>()
             .BindConfiguration(MetricsOptions.Section)
             .ValidateDataAnnotations();

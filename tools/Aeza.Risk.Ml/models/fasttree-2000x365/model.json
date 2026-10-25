@@ -1,0 +1,701 @@
+{
+  "format": 1,
+  "version": "20261025-1306-fasttree-7694d6de",
+  "createdAt": "2026-10-25T13:06:40Z",
+  "featureSchema": "aeza-ml-features-v1",
+  "features": [
+    "term_week",
+    "term_month",
+    "term_quarter",
+    "term_half_year",
+    "term_year",
+    "price_month_eur",
+    "auto_prolong",
+    "status_suspended",
+    "status_prolong_wait",
+    "days_to_expiry",
+    "service_age_days_log",
+    "funds_cover",
+    "balance_eur_log",
+    "bonus_unlocked",
+    "withdraw_eur_log",
+    "live_services",
+    "tenure_days_log",
+    "has_behavior",
+    "logins_7",
+    "logins_30",
+    "days_since_login",
+    "cpu_7",
+    "cpu_base",
+    "cpu_ratio",
+    "usage_days_7",
+    "failed_payments_30",
+    "payments_30_eur_log",
+    "topups_30",
+    "topups_90_eur_log",
+    "tickets_30",
+    "unsolved_30",
+    "csat_min_30",
+    "nps_min_90",
+    "incident_min_30_log",
+    "downgrades_60",
+    "upgrades_60",
+    "autoprolong_off_30",
+    "suspends_30",
+    "backups_14",
+    "withdrawals_30_eur_log",
+    "bonus_expired_45",
+    "deletions_90",
+    "renewals_90"
+  ],
+  "input": "Features",
+  "output": "Probability.output",
+  "model": "fasttree",
+  "trainer": {
+    "kind": "FastTree (градиентный бустинг)",
+    "trees": 200,
+    "leaves": 20,
+    "minLeaf": 20,
+    "learningRate": 0.1
+  },
+  "seed": 42,
+  "target": "не продлено в течение 5 дн. после срока (как expiry_outcomes); blocked исключён; незрелые сроки — цензура",
+  "decisions": "за 14 и 7 дней до срока (месяц и дольше), за 3 дня (неделя); почасовые не входят",
+  "synthetic": true,
+  "dataset": {
+    "source": "dataset:633ffd46",
+    "sha256": "549be0adc6580730c6da04c71f28f681dbb289bacb34f38606c509b5823738ee",
+    "rows": 39790,
+    "positives": 3012,
+    "dataStart": "2025-10-25T00:00:00Z",
+    "dataEnd": "2026-10-24T23:58:48Z"
+  },
+  "split": {
+    "testFrom": "2026-07-24T00:00:00Z",
+    "lastTrainDecision": "2026-07-15T20:42:25Z",
+    "gapDays": 8.1,
+    "trainRows": 27297,
+    "trainPositives": 1972,
+    "testRows": 10789,
+    "testPositives": 938,
+    "customersOutsideTrainingShare": 0.2,
+    "capacityShare": 0.05
+  },
+  "baseline": "rulesWide",
+  "metrics": {
+    "rules": {
+      "rows": 10789,
+      "positives": 938,
+      "prAuc": 0.0937,
+      "rocAuc": 0.5151,
+      "k": 540,
+      "precisionAtK": 0.1296,
+      "recallAtK": 0.0746,
+      "brier": null
+    },
+    "rulesWide": {
+      "rows": 10789,
+      "positives": 938,
+      "prAuc": 0.1473,
+      "rocAuc": 0.674,
+      "k": 540,
+      "precisionAtK": 0.1648,
+      "recallAtK": 0.0949,
+      "brier": null
+    },
+    "logistic": {
+      "time": {
+        "rows": 10789,
+        "positives": 938,
+        "prAuc": 0.5599,
+        "rocAuc": 0.8451,
+        "k": 540,
+        "precisionAtK": 0.6889,
+        "recallAtK": 0.3966,
+        "brier": 0.0545
+      },
+      "prAucCi95": [
+        0.5023,
+        0.6075
+      ],
+      "prAucMinusRulesCi95": [
+        0.3557,
+        0.4474
+      ],
+      "precisionAtKCi95": [
+        0.5925,
+        0.7778
+      ],
+      "precisionAtKMinusRulesCi95": [
+        0.4313,
+        0.6081
+      ],
+      "customersOutsideTraining": {
+        "model": {
+          "rows": 2165,
+          "positives": 223,
+          "prAuc": 0.5554,
+          "rocAuc": 0.8254,
+          "k": 109,
+          "precisionAtK": 0.7339,
+          "recallAtK": 0.3587,
+          "brier": 0.0652
+        },
+        "rules": {
+          "rows": 2165,
+          "positives": 223,
+          "prAuc": 0.1747,
+          "rocAuc": 0.6654,
+          "k": 109,
+          "precisionAtK": 0.2018,
+          "recallAtK": 0.0987,
+          "brier": null
+        }
+      },
+      "calibration": [
+        {
+          "from": 0,
+          "to": 0.1,
+          "rows": 8886,
+          "predicted": 0.0232,
+          "observed": 0.037
+        },
+        {
+          "from": 0.1,
+          "to": 0.2,
+          "rows": 999,
+          "predicted": 0.1387,
+          "observed": 0.1331
+        },
+        {
+          "from": 0.2,
+          "to": 0.3,
+          "rows": 341,
+          "predicted": 0.2423,
+          "observed": 0.2874
+        },
+        {
+          "from": 0.3,
+          "to": 0.4,
+          "rows": 135,
+          "predicted": 0.3475,
+          "observed": 0.363
+        },
+        {
+          "from": 0.4,
+          "to": 0.5,
+          "rows": 85,
+          "predicted": 0.4438,
+          "observed": 0.4588
+        },
+        {
+          "from": 0.5,
+          "to": 0.6,
+          "rows": 61,
+          "predicted": 0.5501,
+          "observed": 0.541
+        },
+        {
+          "from": 0.6,
+          "to": 0.7,
+          "rows": 61,
+          "predicted": 0.6443,
+          "observed": 0.8361
+        },
+        {
+          "from": 0.7,
+          "to": 0.8,
+          "rows": 66,
+          "predicted": 0.7477,
+          "observed": 0.8182
+        },
+        {
+          "from": 0.8,
+          "to": 0.9,
+          "rows": 49,
+          "predicted": 0.855,
+          "observed": 0.9592
+        },
+        {
+          "from": 0.9,
+          "to": 1,
+          "rows": 106,
+          "predicted": 0.9652,
+          "observed": 0.9906
+        }
+      ]
+    },
+    "fasttree": {
+      "time": {
+        "rows": 10789,
+        "positives": 938,
+        "prAuc": 0.637,
+        "rocAuc": 0.8734,
+        "k": 540,
+        "precisionAtK": 0.7963,
+        "recallAtK": 0.4584,
+        "brier": 0.0479
+      },
+      "prAucCi95": [
+        0.5932,
+        0.6769
+      ],
+      "prAucMinusRulesCi95": [
+        0.4419,
+        0.5342
+      ],
+      "precisionAtKCi95": [
+        0.713,
+        0.8713
+      ],
+      "precisionAtKMinusRulesCi95": [
+        0.5508,
+        0.7079
+      ],
+      "customersOutsideTraining": {
+        "model": {
+          "rows": 2165,
+          "positives": 223,
+          "prAuc": 0.6146,
+          "rocAuc": 0.8465,
+          "k": 109,
+          "precisionAtK": 0.8624,
+          "recallAtK": 0.4215,
+          "brier": 0.0591
+        },
+        "rules": {
+          "rows": 2165,
+          "positives": 223,
+          "prAuc": 0.1747,
+          "rocAuc": 0.6654,
+          "k": 109,
+          "precisionAtK": 0.2018,
+          "recallAtK": 0.0987,
+          "brier": null
+        }
+      },
+      "calibration": [
+        {
+          "from": 0,
+          "to": 0.1,
+          "rows": 9568,
+          "predicted": 0.0177,
+          "observed": 0.0354
+        },
+        {
+          "from": 0.1,
+          "to": 0.2,
+          "rows": 376,
+          "predicted": 0.1422,
+          "observed": 0.1968
+        },
+        {
+          "from": 0.2,
+          "to": 0.3,
+          "rows": 152,
+          "predicted": 0.2429,
+          "observed": 0.2632
+        },
+        {
+          "from": 0.3,
+          "to": 0.4,
+          "rows": 103,
+          "predicted": 0.3459,
+          "observed": 0.3398
+        },
+        {
+          "from": 0.4,
+          "to": 0.5,
+          "rows": 80,
+          "predicted": 0.4447,
+          "observed": 0.4
+        },
+        {
+          "from": 0.5,
+          "to": 0.6,
+          "rows": 61,
+          "predicted": 0.5414,
+          "observed": 0.4098
+        },
+        {
+          "from": 0.6,
+          "to": 0.7,
+          "rows": 59,
+          "predicted": 0.6476,
+          "observed": 0.678
+        },
+        {
+          "from": 0.7,
+          "to": 0.8,
+          "rows": 61,
+          "predicted": 0.7567,
+          "observed": 0.7213
+        },
+        {
+          "from": 0.8,
+          "to": 0.9,
+          "rows": 98,
+          "predicted": 0.8541,
+          "observed": 0.9184
+        },
+        {
+          "from": 0.9,
+          "to": 1,
+          "rows": 231,
+          "predicted": 0.9645,
+          "observed": 0.9481
+        }
+      ]
+    }
+  },
+  "topFeatures": [
+    {
+      "name": "auto_prolong",
+      "prAucDrop": 0.2309
+    },
+    {
+      "name": "autoprolong_off_30",
+      "prAucDrop": 0.1222
+    },
+    {
+      "name": "funds_cover",
+      "prAucDrop": 0.0793
+    },
+    {
+      "name": "cpu_7",
+      "prAucDrop": 0.0233
+    },
+    {
+      "name": "balance_eur_log",
+      "prAucDrop": 0.0231
+    },
+    {
+      "name": "days_since_login",
+      "prAucDrop": 0.022
+    },
+    {
+      "name": "service_age_days_log",
+      "prAucDrop": 0.0202
+    },
+    {
+      "name": "cpu_base",
+      "prAucDrop": 0.018
+    },
+    {
+      "name": "cpu_ratio",
+      "prAucDrop": 0.0175
+    },
+    {
+      "name": "withdrawals_30_eur_log",
+      "prAucDrop": 0.0158
+    },
+    {
+      "name": "downgrades_60",
+      "prAucDrop": 0.015
+    },
+    {
+      "name": "deletions_90",
+      "prAucDrop": 0.0133
+    },
+    {
+      "name": "payments_30_eur_log",
+      "prAucDrop": 0.0112
+    },
+    {
+      "name": "incident_min_30_log",
+      "prAucDrop": 0.0076
+    },
+    {
+      "name": "live_services",
+      "prAucDrop": 0.0061
+    }
+  ],
+  "leakage": {
+    "shuffledLabelsPrAuc": 0.0841,
+    "shuffledLabelsRocAuc": 0.4672,
+    "baseRate": 0.0869,
+    "featuresWithoutIds": true
+  },
+  "causes": {
+    "partial": {
+      "positives": 522,
+      "recallAtKModel": 0.3027,
+      "recallAtKRules": 0.0958,
+      "signals": [
+        {
+          "name": "autoprolong_off_30",
+          "smd": 1.8239
+        },
+        {
+          "name": "withdrawals_30_eur_log",
+          "smd": 1.3693
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -0.948
+        },
+        {
+          "name": "cpu_ratio",
+          "smd": -0.8632
+        },
+        {
+          "name": "cpu_7",
+          "smd": -0.5467
+        }
+      ],
+      "expected": [],
+      "signalsMatchExpected": null
+    },
+    "dissatisfaction": {
+      "positives": 141,
+      "recallAtKModel": 0.5532,
+      "recallAtKRules": 0.1135,
+      "signals": [
+        {
+          "name": "autoprolong_off_30",
+          "smd": 2.9431
+        },
+        {
+          "name": "withdrawals_30_eur_log",
+          "smd": 2.4633
+        },
+        {
+          "name": "cpu_ratio",
+          "smd": -1.9122
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.2804
+        },
+        {
+          "name": "cpu_7",
+          "smd": -1.0344
+        }
+      ],
+      "expected": [
+        "unsolved_30",
+        "csat_min_30",
+        "incident_min_30_log",
+        "tickets_30",
+        "nps_min_90",
+        "cpu_ratio",
+        "logins_7",
+        "cpu_7"
+      ],
+      "signalsMatchExpected": true
+    },
+    "neglect": {
+      "positives": 92,
+      "recallAtKModel": 1,
+      "recallAtKRules": 0,
+      "signals": [
+        {
+          "name": "days_since_login",
+          "smd": 3.2967
+        },
+        {
+          "name": "topups_90_eur_log",
+          "smd": -2.1145
+        },
+        {
+          "name": "cpu_base",
+          "smd": -1.5466
+        },
+        {
+          "name": "payments_30_eur_log",
+          "smd": -1.5424
+        },
+        {
+          "name": "logins_30",
+          "smd": -1.5047
+        }
+      ],
+      "expected": [
+        "logins_30",
+        "logins_7",
+        "days_since_login",
+        "cpu_7",
+        "funds_cover",
+        "topups_90_eur_log",
+        "balance_eur_log"
+      ],
+      "signalsMatchExpected": true
+    },
+    "decay": {
+      "positives": 83,
+      "recallAtKModel": 0.759,
+      "recallAtKRules": 0.1205,
+      "signals": [
+        {
+          "name": "withdrawals_30_eur_log",
+          "smd": 3.1708
+        },
+        {
+          "name": "autoprolong_off_30",
+          "smd": 1.7243
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.4034
+        },
+        {
+          "name": "cpu_7",
+          "smd": -1.2942
+        },
+        {
+          "name": "logins_30",
+          "smd": -1.2726
+        }
+      ],
+      "expected": [
+        "cpu_ratio",
+        "cpu_7",
+        "logins_7",
+        "logins_30",
+        "days_since_login",
+        "usage_days_7"
+      ],
+      "signalsMatchExpected": true
+    },
+    "price": {
+      "positives": 39,
+      "recallAtKModel": 0.6154,
+      "recallAtKRules": 0.1026,
+      "signals": [
+        {
+          "name": "bonus_expired_45",
+          "smd": 3.42
+        },
+        {
+          "name": "autoprolong_off_30",
+          "smd": 2.6541
+        },
+        {
+          "name": "cpu_ratio",
+          "smd": -1.9859
+        },
+        {
+          "name": "deletions_90",
+          "smd": 1.1827
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.125
+        }
+      ],
+      "expected": [
+        "bonus_expired_45",
+        "downgrades_60",
+        "autoprolong_off_30",
+        "auto_prolong",
+        "funds_cover",
+        "bonus_unlocked"
+      ],
+      "signalsMatchExpected": true
+    },
+    "finance": {
+      "positives": 30,
+      "recallAtKModel": 0.5,
+      "recallAtKRules": 0.0667,
+      "signals": [
+        {
+          "name": "withdrawals_30_eur_log",
+          "smd": 5.7281
+        },
+        {
+          "name": "autoprolong_off_30",
+          "smd": 1.8667
+        },
+        {
+          "name": "payments_30_eur_log",
+          "smd": -1.6702
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.3311
+        },
+        {
+          "name": "live_services",
+          "smd": -1.1051
+        }
+      ],
+      "expected": [
+        "failed_payments_30",
+        "funds_cover",
+        "topups_30",
+        "topups_90_eur_log",
+        "downgrades_60",
+        "balance_eur_log"
+      ],
+      "signalsMatchExpected": false
+    },
+    "non_payment": {
+      "positives": 28,
+      "recallAtKModel": 0,
+      "recallAtKRules": 0.25,
+      "signals": [
+        {
+          "name": "live_services",
+          "smd": -1.1572
+        },
+        {
+          "name": "usage_days_7",
+          "smd": -1.1377
+        },
+        {
+          "name": "payments_30_eur_log",
+          "smd": -1.1086
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.0586
+        },
+        {
+          "name": "tenure_days_log",
+          "smd": -1.0282
+        }
+      ],
+      "expected": [
+        "funds_cover",
+        "balance_eur_log",
+        "failed_payments_30",
+        "topups_30",
+        "topups_90_eur_log",
+        "auto_prolong"
+      ],
+      "signalsMatchExpected": true
+    },
+    "abuse": {
+      "positives": 3,
+      "recallAtKModel": 0,
+      "recallAtKRules": 0,
+      "signals": [
+        {
+          "name": "cpu_7",
+          "smd": 2.8023
+        },
+        {
+          "name": "tenure_days_log",
+          "smd": -2.6475
+        },
+        {
+          "name": "auto_prolong",
+          "smd": -1.7169
+        },
+        {
+          "name": "service_age_days_log",
+          "smd": -1.59
+        },
+        {
+          "name": "cpu_base",
+          "smd": 1.529
+        }
+      ],
+      "expected": [],
+      "signalsMatchExpected": null
+    }
+  },
+  "onnxSha256": "7694d6de17b39820b581f37b0b4d1159a1f00023ea8a0eca4957c4d5bea3922a",
+  "parityMaxAbsDiff": 1.1920928955078125E-07,
+  "note": "Синтетика: метрики — проверка конвейера, а не качество на реальных клиентах. Модель работает только в тени."
+}

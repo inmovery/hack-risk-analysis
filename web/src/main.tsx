@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@fontsource-variable/inter';
+import '@fontsource-variable/exo-2';
 import './styles/app.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LiveProvider } from './live/LiveContext';
@@ -13,6 +14,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { CustomerPage } from './pages/CustomerPage';
 import { ModelPage } from './pages/ModelPage';
 import { SourcePage } from './pages/SourcePage';
+import { SimulationPage } from './pages/SimulationPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: true, retry: 1 } },
@@ -43,6 +45,7 @@ function App() {
         <Route path="customers/:id" element={<CustomerPage />} />
         <Route path="model" element={<ModelPage />} />
         <Route path="source" element={<SourcePage />} />
+        <Route path="simulation" element={<SimulationPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

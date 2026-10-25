@@ -64,6 +64,7 @@ public static class AuthConfiguration
         services.AddAuthorizationBuilder()
             .AddPolicy(Policies.Reader, p => p.AddAuthenticationSchemes(AuthSchemes.Cookie).RequireRole(Roles.Admin, Roles.Analyst))
             .AddPolicy(Policies.Admin, p => p.AddAuthenticationSchemes(AuthSchemes.Cookie).RequireRole(Roles.Admin))
+            .AddPolicy(Policies.SimulationAgent, p => p.AddAuthenticationSchemes(AuthSchemes.Machine).RequireRole(Roles.MachineIngest))
             .AddPolicy(Policies.SourceWriter, p => p.AddAuthenticationSchemes(AuthSchemes.Cookie, AuthSchemes.Machine).RequireRole(Roles.Admin, Roles.MachineIngest))
             .AddPolicy(Policies.ImportStatus, p => p.AddAuthenticationSchemes(AuthSchemes.Cookie, AuthSchemes.Machine).RequireRole(Roles.Admin, Roles.Analyst, Roles.MachineIngest));
 

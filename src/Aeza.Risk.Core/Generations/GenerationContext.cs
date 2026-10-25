@@ -53,7 +53,8 @@ public static class GenerationPublishing
             new SummaryCustomersDto(s.CustomersTotal, s.ByLevel, s.ByState, s.ScoredCustomers, s.ScoreSum),
             new SummaryServicesDto(s.ServicesTotal, s.ServicesRenewable, s.ServicesScored, s.ServicesUnscored, s.ServicesUnschedulable, s.ServicesByStatus),
             new SummaryMoneyDto(s.HorizonDays, s.PlannedRenewalsMinor, s.UnfundedMinor, s.AtRiskMinor, s.UnscoredPlannedMinor, s.UnfundedUnknownPlannedMinor,
-                s.MoneyByLevel.ToDictionary(k => k.Key, k => new LevelMoneyDto(k.Value.Customers, k.Value.PlannedRenewalsMinor, k.Value.UnfundedMinor, k.Value.AtRiskMinor))),
+                s.MoneyByLevel.ToDictionary(k => k.Key, k => new LevelMoneyDto(k.Value.Customers, k.Value.PlannedRenewalsMinor, k.Value.UnfundedMinor, k.Value.AtRiskMinor)),
+                s.AtRiskInterval),
             s.QualityFlags, top,
             new ChurnSummaryDto(
                 new FullChurnSummaryDto(s.FullChurnByLevel, s.FullChurnByState),

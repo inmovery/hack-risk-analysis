@@ -1,0 +1,102 @@
+{{- if .Values.simulation.simulator.enabled }}
+# Симулятор системы-источника: опрашивает сервис (GET /api/v1/simulation/agent) и шлёт события; анализатор к нему не обращается
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-simulator
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: simulator
+spec:
+  # Один мир — один симулятор
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: simulator
+  template:
+    metadata:
+      labels:
+        {{- include "aeza-risk.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: simulator
+    spec:
+      serviceAccountName: {{ include "aeza-risk.fullname" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "aeza-risk.podSecurity" . | nindent 8 }}
+        # Том состояния доступен пользователю образа
+        fsGroup: 1654
+      {{- with .Values.simulation.simulator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: simulator
+          image: {{ include "aeza-risk.appImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["dotnet", "/app/simulator/Aeza.Risk.SourceSimulator.dll"]
+          env:
+            - name: SIM_MODE
+              value: agent
+            - name: SIM_API
+              value: "http://{{ include "aeza-risk.fullname" . }}-app:5000"
+            - name: SIM_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: ingest-token
+            # Тестовые данные организаторов в образе: мир organizer строится из них
+            - name: SIM_INIT
+              value: /app/simulator/organizer/data.json
+            - name: SIM_DIR
+              value: /state
+          resources:
+            {{- toYaml .Values.simulation.simulator.resources | nindent 12 }}
+          securityContext:
+            {{- include "aeza-risk.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: state
+          {{- if .Values.simulation.simulator.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "aeza-risk.fullname" . }}-simulator
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- if .Values.simulation.simulator.persistence.enabled }}
+---
+# Мир и очередь отправки симулятора переживают перезапуск пода
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-simulator
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: simulator
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.simulation.simulator.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.simulation.simulator.persistence.size }}
+{{- end }}
+{{- end }}

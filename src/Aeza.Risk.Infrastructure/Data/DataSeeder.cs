@@ -22,6 +22,10 @@ public sealed class DataSeeder(
     IRecalcSignal signal,
     IOptions<AuthOptions> authOptions,
     IOptions<SeedOptions> seedOptions,
+    IOptions<SimulationOptions> simulationOptions,
+    ISimulationStore simulation,
+    IOptions<MlOptions> mlOptions,
+    IMlModels mlModels,
     TimeProvider time,
     ILogger<DataSeeder> logger)
 {
@@ -52,7 +56,32 @@ public sealed class DataSeeder(
         }
 
         await EnsureUsersAsync(requireStrongPasswords, cancellationToken);
-        await SeedSnapshotAsync(now, cancellationToken);
+        await EnsureDefaultModelAsync(cancellationToken);
+        // В режиме событий тестовые данные не загружаются: их передаёт симулятор
+        if (simulationOptions.Value.EventsOnly)
+        {
+            await simulation.GetAsync(cancellationToken);
+            await simulation.EnsureEmptyBaseAsync(cancellationToken);
+        }
+        else
+        {
+            await SeedSnapshotAsync(now, cancellationToken);
+        }
+    }
+
+    /// <summary>Основной балл по умолчанию — ML: если моделей ещё нет, включается встроенный пакет</summary>
+    private async Task EnsureDefaultModelAsync(CancellationToken cancellationToken)
+    {
+        if (mlOptions.Value.DefaultBundle is not { Length: > 0 } configured || await db.MlModels.AnyAsync(cancellationToken)) return;
+        var path = Path.IsPathRooted(configured) ? configured : Path.Combine(AppContext.BaseDirectory, configured);
+        if (!File.Exists(path))
+        {
+            logger.LogWarning("Default ML bundle not found; scoring falls back to rules until a model is uploaded");
+            return;
+        }
+        await using var bundle = File.OpenRead(path);
+        var activated = await mlModels.UploadAsync(bundle, "system", cancellationToken);
+        logger.LogInformation("Default ML model {Version} activated", activated.Model.Version);
     }
 
     /// <summary>Создаёт bootstrap-пользователей, если их ещё нет</summary>

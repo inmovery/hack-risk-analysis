@@ -6,6 +6,7 @@ import { ImportPanel, ImportProgress } from './ImportPanel';
 import { age, dateTime, localDateTime } from '../format';
 import { describeEvent, kindLabel, outcomeLabel, outcomeTone } from '../journal';
 import type { Connector, JournalItem, StreamStatus } from '../api/types';
+import { Select } from './controls';
 
 const secondsSince = (iso: string | null) => (iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000) : 0);
 
@@ -66,7 +67,7 @@ function ConnectorCard({ c, s }: { c: Connector; s: StreamStatus }) {
     title = 'Тестовые данные (из файла)';
     status = s.base ? `ревизия r${s.base.revision} · данные на ${dateTime(s.base.sourceAsOf)}` : 'тестовые данные не загружены';
     lines = [
-      s.base?.synthetic ? 'База помечена как синтетика' : 'База — тестовый набор / данные источника',
+      s.base?.synthetic ? 'База — данные симулятора' : 'База — тестовый набор / данные источника',
       `Поверх базы применено событий: ${s.eventsSinceBase}`,
     ];
     endpoint = 'PUT /api/v1/source/snapshot · полная замена (ниже)';
@@ -78,7 +79,7 @@ function ConnectorCard({ c, s }: { c: Connector; s: StreamStatus }) {
         `За 24 ч: применено ${l24.applied ?? 0} · без изменений ${l24.no_change ?? 0} · устаревших ${l24.stale ?? 0}`,
         `Доменных событий v2 за 24 ч: ${s.quality.domainEvents24h}${s.quality.unknownTypes24h ? ` · неизвестных типов ${s.quality.unknownTypes24h}` : ''}`,
         ...lines,
-        ...(s.synthetic ? ['Есть синтетика (симулятор)'] : []),
+        ...(s.synthetic ? ['Есть события симулятора'] : []),
       ];
       endpoint = c.enabled ? 'POST /api/v1/source/events · Bearer INGEST_TOKEN' : 'INGEST_TOKEN не задан: принимаются только пакеты администратора';
     } else if (c.key === 'batch-import') {
@@ -140,12 +141,8 @@ function Journal() {
               {o ? outcomeLabel[o] : 'Все'}
             </button>
           ))}
-          <select className="input" aria-label="Тип записи" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">Все записи</option>
-            <option value="service">Услуги</option>
-            <option value="account">Аккаунты</option>
-            <option value="transaction">Транзакции</option>
-          </select>
+          <Select ariaLabel="Тип записи" value={kind} onChange={setKind} testId="journal-kind" width={180}
+            options={[{ value: '', label: 'Все записи' }, { value: 'service', label: 'Услуги' }, { value: 'account', label: 'Аккаунты' }, { value: 'transaction', label: 'Транзакции' }]} />
         </div>
       </div>
       {first.data && first.data.items.length === 0 ? (

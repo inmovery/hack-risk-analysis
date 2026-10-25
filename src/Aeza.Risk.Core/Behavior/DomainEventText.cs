@@ -87,6 +87,10 @@ public static class DomainEventText
             "nps.responded" => $"NPS: {Num("score", "0")} из 10",
             "retention.offer_sent" => $"Предложение удержания: {S("kind") ?? "—"}",
             "retention.offer_redeemed" => "Принял предложение удержания",
+            "retention.holdout" => $"Контрольная группа удержания: предложение «{S("kind") ?? "—"}» не отправлено",
+            "service.backup_downloaded" => $"Выгрузил резервную копию ({Num("sizeGb")} ГБ)",
+            "dns.records_changed" => S("target") == "external" ? "Перевёл DNS-записи на другого провайдера" : "Изменил DNS-записи",
+            "exit.survey_answered" => $"Опрос при уходе: {S("reason") ?? "—"}",
             _ => type,
         };
     }

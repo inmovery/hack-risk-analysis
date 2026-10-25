@@ -69,6 +69,6 @@ public class PostImport
                 .WithSummary("Пакетный импорт истории событий (JSONL, можно gzip): durable-задание, прогресс — GET /source/imports/{id}")
                 .WithDescription("Строка — событие v1 или v2 в том же формате, что и в POST /source/events (без обёртки { events }). ≤ 3 млн строк, ≤ 700 МБ." +
                                  "Файл режется на куски по 5000 строк; куски применяются по порядку, после падения — со следующего куска; повтор файла безопасен (eventId → duplicate)." +
-                                 "Пересчёт — один раз в конце. ?synthetic=true — пометить события как синтетику. Bearer INGEST_TOKEN или admin (cookie + X-CSRF-TOKEN). 202 + номер импорта.");
+                                 "Пересчёт — один раз в конце. ?synthetic=true — пометить события как события симулятора. Bearer INGEST_TOKEN или admin (cookie + X-CSRF-TOKEN). 202 + номер импорта.");
     }
 }

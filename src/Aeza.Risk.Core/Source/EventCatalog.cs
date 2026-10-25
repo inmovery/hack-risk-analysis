@@ -54,6 +54,8 @@ public static class EventCatalog
         new("service.reinstalled", EventScope.Account, null),
         new("service.backup_created", EventScope.Account, null),
         new("service.migrated", EventScope.Account, null),
+        new("service.backup_downloaded", EventScope.Account, null),
+        new("dns.records_changed", EventScope.Account, null),
         // Использование
         new("usage.daily", EventScope.Account, null),
         new("service.incident", EventScope.Account, null),
@@ -65,6 +67,8 @@ public static class EventCatalog
         // Удержание
         new("retention.offer_sent", EventScope.Account, null),
         new("retention.offer_redeemed", EventScope.Account, null),
+        new("retention.holdout", EventScope.Account, null),
+        new("exit.survey_answered", EventScope.Account, null),
         // Глобальные
         new("tariff.price_changed", EventScope.Global, null),
         new("datacenter.incident", EventScope.Global, null),

@@ -18,6 +18,6 @@ public sealed class SeedOptions
     /// <summary>Метка происхождения в provenance</summary>
     public string Label { get; set; } = "seed";
 
-    /// <summary>Пометить снимок как синтетический</summary>
+    /// <summary>Пометить снимок как данные симулятора</summary>
     public bool Synthetic { get; set; }
 }

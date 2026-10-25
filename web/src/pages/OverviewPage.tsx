@@ -22,24 +22,20 @@ export function OverviewPage() {
         {error && !data && <ErrorBox error={error} />}
         {data && (
           <>
-            {data.generation.sourceKind === 'stream' && data.generation.synthetic && (
-              <Banner tone="info">
-                Источник: тестовые данные на {dateTime(data.generation.sourceAsOf)} + поток событий{history.data?.coverage.streamStartedAt ? ` с ${dateTime(history.data.coverage.streamStartedAt)}` : ''}.
-                Среди данных есть синтетика (тестовые данные или события симулятора): факты и исходы — демонстрационные.
-              </Banner>
-            )}
             {data.generation.sourceKind === 'snapshot' && data.generation.sourceAgeSeconds > 24 * 3600 && (
               <Banner tone="warning">
                 Тестовые данные на {dateTime(data.generation.sourceAsOf)} — {age(data.generation.sourceAgeSeconds)} назад.{' '}
                 {data.generation.clockMode === 'live'
                   ? 'Оценка на текущее время (режим live); статусы услуг — по последним данным источника.'
                   : 'Оценка выполнена на момент выгрузки данных (режим «на момент выгрузки данных»).'}
-                {data.generation.synthetic && ' Тестовые данные помечены как синтетические (демо).'}
               </Banner>
             )}
             <section className="grid-kpi" aria-label="Ключевые показатели">
               <KpiCard primary testId="kpi-at-risk" label={`Выручка под риском · ${data.money.horizonDays} дн.`} value={eur(data.money.atRiskMinor)}
-                caption="Σ продлений × score/100. Индекс, не вероятность." to="/customers?sort=atRisk:desc" />
+                caption={data.money.atRiskInterval
+                  ? `Σ продлений × вероятность ML. 90 %: ${eur(data.money.atRiskInterval.lowMinor)} – ${eur(data.money.atRiskInterval.highMinor)}`
+                  : 'Σ продлений × score/100. Индекс, не вероятность.'}
+                to="/customers?sort=atRisk:desc" />
               <KpiCard testId="kpi-planned" label={`Плановые продления · ${data.money.horizonDays} дн.`} value={eur(data.money.plannedRenewalsMinor)}
                 caption="active / suspended / prolong_wait при текущих ценах" />
               <KpiCard testId="kpi-unfunded" label={`Не покрыто балансом · ${data.money.horizonDays} дн.`} value={eur(data.money.unfundedMinor)}
@@ -224,7 +220,7 @@ function FactPanel({ history, summary }: { history: HistoryResponse | undefined;
       )}
       <p className="caption muted">Только события, полученные после подключения потока (время = время получения). «Не продлено» — только при свежем источнике.</p>
       <div className="row-wrap" style={{ gap: 6 }}>
-        {history?.coverage.streamStartedAt && <Tag>журнал с {dateTime(history.coverage.streamStartedAt)}{history.coverage.synthetic ? ' · синтетика' : ''}</Tag>}
+        {history?.coverage.streamStartedAt && <Tag>журнал с {dateTime(history.coverage.streamStartedAt)}</Tag>}
         <Tag>Расхождения между загрузками тестовых данных: {summary.history.eventsTotal}</Tag>
       </div>
     </div>

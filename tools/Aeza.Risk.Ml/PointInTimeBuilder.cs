@@ -8,10 +8,10 @@ public sealed record DatasetRow(
     long AccountId, long ServiceId, DateTimeOffset DecisionAt, DateTimeOffset ExpiresAt, int OffsetDays, string Term, int Label, decimal? RulesScore,
     decimal? RulesScoreWide, float[] Features);
 
-/// <summary>Итог построения: строки и счётчики (сколько решений, меток, исключено, цензуры)</summary>
+/// <summary>Итог построения: строки решений по услугам, счётчики и еженедельные срезы клиентов с метками</summary>
 public sealed record DatasetBuild(
     IReadOnlyList<DatasetRow> Rows, int Decisions, int Skipped, int Positives, int Negatives, int Excluded, int Censored,
-    DateTimeOffset DataStart, DateTimeOffset DataEnd, DateTimeOffset LabelsCompleteUpTo, long Events);
+    DateTimeOffset DataStart, DateTimeOffset DataEnd, DateTimeOffset LabelsCompleteUpTo, long Events, IReadOnlyList<CustomerWeekRow>? Customers = null);
 
 /// <summary>Набор point-in-time: журнал переигрывается по времени события тем же кодом, что и приём анализатора (SourceChangeRules</summary>
 public sealed class PointInTimeBuilder(int graceDays = 5)
@@ -32,6 +32,17 @@ public sealed class PointInTimeBuilder(int graceDays = 5)
         var tx = new Dictionary<long, Dictionary<long, TransactionInput>>();
         foreach (var t in journal.Base.Transactions) Index(tx, t);
         var activity = new ActivityTracker();
+        // Срез клиента: признаки и балл правил на момент среза, по состоянию журнала на этот момент
+        (float[] Features, decimal? Rules)? CustomerSnapshot(long account, DateTimeOffset at)
+        {
+            if (!state.Accounts.TryGetValue(account, out var acc)) return null;
+            var services = state.ServicesOf(account).ToList();
+            var features = MlCustomerFeatures.Compute(acc, services, activity.Behavior(account, at), at);
+            var transactions = services.SelectMany(x => tx.TryGetValue(x.Id, out var m) ? (IEnumerable<TransactionInput>)m.Values : []).ToList();
+            return (features, _engine.Evaluate(new SourceData([acc], services, transactions), _rules, at).Customers[0].Score);
+        }
+        var customers = new CustomerTimeline(baseAsOf, CustomerSnapshot);
+        foreach (var a in journal.Base.Accounts) customers.Observe(a.Id, baseAsOf, state.ServicesOf(a.Id));
         var evaluated = new List<(Decision D, DatasetRow Row)>();
         int decisions = 0, skipped = 0;
         long events = 0;
@@ -69,8 +80,13 @@ public sealed class PointInTimeBuilder(int graceDays = 5)
         {
             events++;
             EvaluateUntil(e.OccurredAt);
+            customers.SnapshotUntil(e.OccurredAt);
             if (e.OccurredAt > dataEnd) dataEnd = e.OccurredAt;
-            if (e.Domain is { } d) activity.Add(d);
+            if (e.Domain is { } d)
+            {
+                activity.Add(d);
+                customers.Domain(d);
+            }
             // Событие не позже даты базы: результат уже в базе (правило before_base анализатора)
             if (e.OccurredAt <= baseAsOf) continue;
             foreach (var change in e.Changes)
@@ -79,7 +95,10 @@ public sealed class PointInTimeBuilder(int graceDays = 5)
                 var r = state.Apply(change);
                 if (r.Outcome != ChangeOutcome.Applied) continue;
                 if (change.Kind == SourceRecordKind.Service)
+                {
                     Schedule(ledger.Apply(ExpiryOutcomeRules.OnServiceObserved(before, change.Service!, e.OccurredAt, graceDays), graceDays));
+                    customers.Observe(change.Service!.OwnerId, e.OccurredAt, state.ServicesOf(change.Service!.OwnerId));
+                }
                 else if (change.Kind == SourceRecordKind.Transaction) Index(tx, change.Transaction!);
             }
             // Источник полон до текущего события (поток по порядку): созревшие сроки решаются раз в час модельного времени
@@ -90,6 +109,7 @@ public sealed class PointInTimeBuilder(int graceDays = 5)
             }
         }
         EvaluateUntil(dataEnd.AddTicks(1));
+        customers.SnapshotUntil(dataEnd);
         ledger.ResolveDue(dataEnd, dataEnd, graceDays, id => state.Services.GetValueOrDefault(id));
 
         var rows = new List<DatasetRow>();
@@ -114,7 +134,7 @@ public sealed class PointInTimeBuilder(int graceDays = 5)
                     break;
             }
         }
-        return new DatasetBuild(rows, decisions, skipped, positives, negatives, excluded, censored, dataStart, dataEnd, dataEnd, events);
+        return new DatasetBuild(rows, decisions, skipped, positives, negatives, excluded, censored, dataStart, dataEnd, dataEnd, events, customers.Label(dataEnd));
     }
 
     private DatasetRow? Evaluate(Decision d, SourceState state, Dictionary<long, Dictionary<long, TransactionInput>> tx, ActivityTracker activity)

@@ -43,7 +43,7 @@ public class GetSummary
             : "Факт: изменения, наблюдённые между последовательными загрузками тестовых данных. Точное время неизвестно — указан интервал (между загрузками).";
         var history = new HistoryDto(observed.Snapshots, observed.EventsTotal, observed.DeletedByObservedDay, observed.Recent, note);
         return TypedResults.Ok(new SummaryResponse(ctx.Info, ctx.Pending, ctx.LastFailure, summary.Customers, summary.Services, summary.Money,
-            summary.QualityFlags, summary.TopAtRisk, forecast, history, Definitions.Default, summary.Churn));
+            summary.QualityFlags, summary.TopAtRisk, forecast, history, Definitions.For(summary.Scoring?.Used), summary.Churn));
     }
 
     /// <inheritdoc />

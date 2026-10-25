@@ -28,6 +28,8 @@
 /docs/*
 !/docs/scoring.md
 !/docs/architecture.md
+!/docs/ml-design.md
+!/docs/ui-design.md
 /contracts/*
 !/contracts/openapi.json
 /test_data_yandex/*

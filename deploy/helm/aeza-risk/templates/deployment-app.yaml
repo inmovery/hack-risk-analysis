@@ -94,7 +94,9 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: ingest-token
+                  {{- if not .Values.simulation.simulator.enabled }}
                   optional: true
+                  {{- end }}
           # Первый старт: импорт снимка и первый пересчёт — до минуты
           startupProbe:
             httpGet:

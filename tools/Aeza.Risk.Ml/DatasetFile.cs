@@ -12,7 +12,11 @@ namespace Aeza.Risk.Ml;
 public static class DatasetFile
 {
     public const string CsvFile = "dataset.csv";
+    public const string CustomersFile = "customers.csv";
     public const string ManifestFile = "dataset.json";
+    private static readonly string[] CustomerKeys =
+        ["account_id", "at", "live_services", "revenue_month_minor", "churn_30", "churn_90", "contraction_30", "weeks_to_churn", "churn_observed", "exit_reason",
+         "rules_score"];
     private static readonly string[] Keys = ["account_id", "service_id", "decision_at", "expires_at", "offset_days", "term", "label", "rules_score", "rules_score_w30"];
 
     public static JsonObject Write(DatasetBuild build, string dir, string source, bool synthetic, int graceDays)
@@ -55,8 +59,71 @@ public static class DatasetFile
             ["dataEnd"] = Iso(build.DataEnd),
             ["sha256"] = Sha256(csv),
         };
+        if (build.Customers is { Count: > 0 } customers) manifest["customers"] = WriteCustomers(customers, dir);
         File.WriteAllText(Path.Combine(dir, ManifestFile), manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
         return manifest;
+    }
+
+    /// <summary>Еженедельные срезы клиентов: customers.csv и сводка меток по годам для манифеста</summary>
+    private static JsonObject WriteCustomers(IReadOnlyList<CustomerWeekRow> rows, string dir)
+    {
+        var path = Path.Combine(dir, CustomersFile);
+        using (var w = new StreamWriter(path, false, new UTF8Encoding(false)) { NewLine = "\n" })
+        {
+            w.WriteLine(string.Join(',', CustomerKeys.Concat(MlCustomerFeatures.Names)));
+            foreach (var r in rows)
+            {
+                var sb = new StringBuilder(string.Join(',', r.AccountId.ToString(CultureInfo.InvariantCulture), Iso(r.At), r.LiveServices.ToString(CultureInfo.InvariantCulture),
+                    r.RevenueMonthMinor.ToString(CultureInfo.InvariantCulture), r.Churn30.ToString(CultureInfo.InvariantCulture), r.Churn90.ToString(CultureInfo.InvariantCulture),
+                    r.Contraction30.ToString(CultureInfo.InvariantCulture), r.WeeksToChurn.ToString("R", CultureInfo.InvariantCulture), r.ChurnObserved ? "1" : "0", r.ExitReason ?? "",
+                    r.RulesScore?.ToString(CultureInfo.InvariantCulture) ?? ""));
+                foreach (var f in r.Features ?? new float[MlCustomerFeatures.Names.Count]) sb.Append(',').Append(f.ToString("R", CultureInfo.InvariantCulture));
+                w.WriteLine(sb.ToString());
+            }
+        }
+        static JsonObject Counts(IEnumerable<int> labels)
+        {
+            var l = labels.ToList();
+            return new JsonObject { ["yes"] = l.Count(x => x == 1), ["no"] = l.Count(x => x == 0), ["censored"] = l.Count(x => x == -1) };
+        }
+        return new JsonObject
+        {
+            ["rows"] = rows.Count,
+            ["customers"] = rows.Select(r => r.AccountId).Distinct().Count(),
+            ["featureSchema"] = MlCustomerFeatures.Schema,
+            ["features"] = new JsonArray(MlCustomerFeatures.Names.Select(n => (JsonNode)n).ToArray()),
+            ["baseline"] = "rules_score — балл правил клиента на момент среза (веса по умолчанию)",
+            ["definition"] = $"срез — понедельник 00:00 UTC, клиенты с действующими услугами; уход — нет действующих услуг и нет возврата {CustomerTimeline.ReturnDays} дн.; " +
+                             $"сокращение — через 30 дн. выручка ниже на {CustomerTimeline.ContractionShare:P0} и больше при оставшихся услугах; −1 — исход неизвестен",
+            ["churn30"] = Counts(rows.Select(r => r.Churn30)),
+            ["churn90"] = Counts(rows.Select(r => r.Churn90)),
+            ["contraction30"] = Counts(rows.Select(r => r.Contraction30)),
+            ["exitReasons"] = new JsonObject(rows.Where(r => r.ExitReason is not null).DistinctBy(r => r.AccountId).GroupBy(r => r.ExitReason!)
+                .OrderByDescending(g => g.Count()).Select(g => KeyValuePair.Create(g.Key, (JsonNode?)g.Count()))),
+            ["sha256"] = Sha256(path),
+        };
+    }
+
+    public static List<CustomerWeekRow> ReadCustomers(string dir)
+    {
+        var path = Path.Combine(dir, CustomersFile);
+        if (!File.Exists(path)) return [];
+        var rows = new List<CustomerWeekRow>();
+        using var reader = new StreamReader(path, Encoding.UTF8);
+        var header = reader.ReadLine()!.Split(',');
+        if (!header.Skip(CustomerKeys.Length).SequenceEqual(MlCustomerFeatures.Names))
+            throw new InvalidOperationException($"Колонки customers.csv не совпадают со схемой {MlCustomerFeatures.Schema}: пересоберите набор");
+        while (reader.ReadLine() is { } line)
+        {
+            var p = line.Split(',');
+            var f = new float[MlCustomerFeatures.Names.Count];
+            for (var i = 0; i < f.Length; i++) f[i] = float.Parse(p[CustomerKeys.Length + i], CultureInfo.InvariantCulture);
+            rows.Add(new CustomerWeekRow(long.Parse(p[0], CultureInfo.InvariantCulture), DateTimeOffset.Parse(p[1], CultureInfo.InvariantCulture),
+                int.Parse(p[2], CultureInfo.InvariantCulture), long.Parse(p[3], CultureInfo.InvariantCulture), int.Parse(p[4], CultureInfo.InvariantCulture),
+                int.Parse(p[5], CultureInfo.InvariantCulture), int.Parse(p[6], CultureInfo.InvariantCulture), double.Parse(p[7], CultureInfo.InvariantCulture),
+                p[8] == "1", p[9].Length == 0 ? null : p[9], Dec(p[10]), f));
+        }
+        return rows;
     }
 
     public static (List<DatasetRow> Rows, JsonObject Manifest) Read(string dir)

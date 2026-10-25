@@ -14,7 +14,7 @@ export function RiskBadge({ level }: { level: RiskLevel }) {
   );
 }
 
-export function Tag({ tone = 'neutral', children, title }: { tone?: 'neutral' | 'info' | 'warning' | 'danger'; children: ReactNode; title?: string }) {
+export function Tag({ tone = 'neutral', children, title }: { tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger'; children: ReactNode; title?: string }) {
   return (
     <span className={`tag tag-${tone}`} title={title}>
       {children}
@@ -23,9 +23,9 @@ export function Tag({ tone = 'neutral', children, title }: { tone?: 'neutral' | 
 }
 
 const bannerIcon = { info: 'ℹ', warning: '⚠', danger: '✕' } as const;
-export function Banner({ tone, children, role }: { tone: 'info' | 'warning' | 'danger'; children: ReactNode; role?: 'status' | 'alert' }) {
+export function Banner({ tone, children, role, testId }: { tone: 'info' | 'warning' | 'danger'; children: ReactNode; role?: 'status' | 'alert'; testId?: string }) {
   return (
-    <div className={`banner banner-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')}>
+    <div className={`banner banner-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')} data-testid={testId}>
       <span className="banner-icon" aria-hidden="true">
         {bannerIcon[tone]}
       </span>

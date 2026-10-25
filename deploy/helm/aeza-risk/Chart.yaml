@@ -1,7 +1,7 @@
 apiVersion: v2
 name: aeza-risk
 description: >-
-  Aeza Risk Analyzer: сервис (API, пересчёт, SignalR, /metrics), панель, миграции и бэкап перед обновлением, Ingress.
+  Aeza Risk Analyzer: сервис (API, пересчёт, SignalR, /metrics), панель, симулятор источника, миграции и бэкап перед обновлением, Ingress.
 type: application
-version: 0.3.1
+version: 0.4.0
 appVersion: "1.0.0"

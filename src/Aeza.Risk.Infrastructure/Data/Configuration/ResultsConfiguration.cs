@@ -77,5 +77,6 @@ public sealed class AppStateConfiguration : IEntityTypeConfiguration<AppStateEnt
     {
         builder.ToTable("app_state");
         builder.Property(x => x.Id).ValueGeneratedNever();
+        builder.Property(x => x.ScoringPrimary).HasMaxLength(16).HasDefaultValue("ml");
     }
 }

@@ -35,6 +35,7 @@ public static class Entry
         serviceCollection.AddScoped<ISourceStreamRepository, SourceStreamRepository>();
         serviceCollection.AddScoped<IBehaviorRepository, BehaviorRepository>();
         serviceCollection.AddScoped<IMlModels, Ml.MlModelStore>();
+        serviceCollection.AddScoped<ISimulationStore, Source.SimulationStore>();
         serviceCollection.AddSingleton<Ml.OnnxShadowRuntime>();
         serviceCollection.AddScoped<DataSeeder>();
 

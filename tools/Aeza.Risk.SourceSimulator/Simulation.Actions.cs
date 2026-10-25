@@ -45,7 +45,10 @@ public sealed partial class Simulation
             case Kinds.AdminDelete: AdminDelete(it.ServiceId); break;
             case Kinds.UserDelete: UserDelete(it.ServiceId, it.Arg ?? "user_request", (int)it.Num); break;
             case Kinds.Decide: Decide(it.AccountId, (int)it.Num); break;
-            case Kinds.Offer: Offer(it.AccountId); break;
+            case Kinds.Offer: Offer(it.AccountId, it.Arg); break;
+            case Kinds.BackupDownload: BackupDownload(it.ServiceId, (int)it.Num); break;
+            case Kinds.DnsChange: DnsChange(it.AccountId, it.Arg!, (int)it.Num); break;
+            case Kinds.ExitSurvey: Emit("exit.survey_answered", it.AccountId, null, new JsonObject { ["reason"] = it.Arg }); break;
             case Kinds.OfferRedeem: OfferRedeem(it.AccountId, it.Arg!); break;
             case Kinds.Verify: Verify(it.AccountId, it.Arg ?? "email"); break;
             case Kinds.Security: Security(it.AccountId); break;
@@ -107,6 +110,12 @@ public sealed partial class Simulation
             Schedule(Daytime(day), Kinds.Login, ag.AccountId);
 
         if (live.Count > 0) Schedule(day.AddMinutes(5).AddSeconds(ag.AccountId % 600), Kinds.Usage, ag.AccountId);
+        if (C.Ext.MigrationSignals && live.Count > 0 && seg.Attentive)
+        {
+            if (_r.Chance(C.Ext.BackupDownloadsPerDay * ag.Tech)) Schedule(Daytime(day), Kinds.BackupDownload, ag.AccountId, live[0].Id);
+            if (UsesProviderDns(ag) && _r.Chance(C.Ext.DnsEditsPerDay))
+                Schedule(Daytime(day), Kinds.DnsChange, ag.AccountId, arg: _r.Chance(0.03) ? "external" : "internal");
+        }
 
         PlanMoney(ag, seg, acc, day, live);
         if (seg.Attentive) PlanBehavior(ag, seg, acc, day, live);
@@ -193,7 +202,17 @@ public sealed partial class Simulation
         if (cause is Causes.Finance or Causes.Price && _r.Chance(0.7))
             Schedule(at(_r.Uniform(0.2, 0.6)), Kinds.Plan, ag.AccountId, live.OrderByDescending(s => s.Price).First().Id, "down", intent.No);
         if (_r.Chance(0.2)) Schedule(intent.DueAt.AddDays(-_r.Uniform(0, 2)), Kinds.TicketOpen, ag.AccountId, arg: "cancellation", num: 0);
+        // Переезд к другому провайдеру: данные выгружаются, DNS переводится незадолго до решения
+        if (C.Ext.MigrationSignals && cause is Causes.Dissatisfaction or Causes.Price)
+        {
+            if (_r.Chance(0.6)) Schedule(intent.DueAt.AddDays(-_r.Uniform(1, 7)), Kinds.BackupDownload, ag.AccountId, live[0].Id, num: intent.No);
+            if (UsesProviderDns(ag) && _r.Chance(0.7))
+                Schedule(intent.DueAt.AddDays(-_r.Uniform(0, 4)), Kinds.DnsChange, ag.AccountId, arg: "external", num: intent.No);
+        }
     }
+
+    // DNS у провайдера держит часть клиентов; признак постоянный и не тратит случайные числа
+    private static bool UsesProviderDns(Agent ag) => ag.AccountId % 5 < 2;
 
     private void CancelIntent(Agent ag, string reason)
     {
@@ -465,6 +484,9 @@ public sealed partial class Simulation
             _ => true,
         };
         if (ag.Gone && _r.Chance(0.1)) Schedule(W.Clock.AddDays(_r.Uniform(1, 10)), Kinds.Close, ag.AccountId);
+        // Опрос при уходе — метка причины, а не признак: приходит после ухода
+        if (C.Ext.ExitSurveyResponse > 0 && ag.Gone && cause is not (Causes.Abuse or Causes.Neglect) && _r.Chance(C.Ext.ExitSurveyResponse))
+            Schedule(W.Clock.AddHours(_r.Uniform(1, 48)), Kinds.ExitSurvey, ag.AccountId, arg: SurveyReason(cause));
     }
 
     private void Login(long accountId)
@@ -630,7 +652,9 @@ public sealed partial class Simulation
         if (ag.Gone) return;
         ag.LastNpsAt = W.Clock;
         if (!_r.Chance(0.35)) return;
-        Emit("nps.responded", accountId, null, new JsonObject { ["score"] = Math.Clamp((int)Math.Round(10 * ag.S - 1 + _r.Normal(0, 1.3)), 0, 10) });
+        var score = Math.Clamp((int)Math.Round(10 * ag.S - 1 + _r.Normal(0, 1.3)), 0, 10);
+        Emit("nps.responded", accountId, null, new JsonObject { ["score"] = score });
+        if (C.Ext.HeterogeneousRetention && score <= 6 && _r.Chance(0.5)) Schedule(W.Clock.AddHours(_r.Uniform(2, 72)), Kinds.Offer, accountId, arg: "low_nps");
     }
 
     // ---------- Действия с услугами ----------
@@ -646,7 +670,9 @@ public sealed partial class Simulation
         {
             var first = !i.TurnedOffAutoProlong;
             i.TurnedOffAutoProlong = true;
-            if (first && _r.Chance(0.3)) Schedule(W.Clock.AddHours(_r.Uniform(1, 48)), Kinds.Offer, ag.AccountId); // удержание — воздействие, не признак
+            // удержание — воздействие, не признак
+            if (first && _r.Chance(C.Ext.HeterogeneousRetention ? 0.6 : 0.3))
+                Schedule(W.Clock.AddHours(_r.Uniform(1, 48)), Kinds.Offer, ag.AccountId, arg: C.Ext.HeterogeneousRetention ? "autoprolong_off" : null);
         }
     }
 
@@ -801,15 +827,116 @@ public sealed partial class Simulation
         }
     }
 
-    private void Offer(long accountId)
+    private void Offer(long accountId, string? trigger, string? forcedKind = null)
     {
         var ag = W.Agents[accountId];
         if (ag.Gone) return;
         var id = W.NextOfferId++;
-        var kind = _r.Pick(new[] { "discount", "bonus", "term_upgrade" });
+        var ext = C.Ext.HeterogeneousRetention;
+        var kind = forcedKind
+                   ?? (ext ? _r.Pick(new[] { "discount", "bonus", "term_upgrade", "support_call" }) : _r.Pick(new[] { "discount", "bonus", "term_upgrade" }));
         var value = kind == "bonus" ? RoundEur(_r.Uniform(3, 10) * 100) : kind == "discount" ? 20 : 1;
-        Emit("retention.offer_sent", accountId, null, new JsonObject { ["offerId"] = id, ["kind"] = kind, ["value"] = value });
-        if (_r.Chance(0.35)) Schedule(W.Clock.AddHours(_r.Uniform(1, 72)), Kinds.OfferRedeem, accountId, arg: $"{id}|{kind}|{value}");
+        // Контрольная группа: кандидат отмечается, но предложение не отправляется — так эффект удержания измерим
+        if (C.Ext.RetentionHoldoutShare > 0 && _r.Chance(C.Ext.RetentionHoldoutShare))
+        {
+            Emit("retention.holdout", accountId, null, new JsonObject { ["offerId"] = id, ["kind"] = kind, ["trigger"] = trigger });
+            return;
+        }
+        var data = new JsonObject { ["offerId"] = id, ["kind"] = kind, ["value"] = value };
+        if (trigger is not null) data["trigger"] = trigger;
+        Emit("retention.offer_sent", accountId, null, data);
+        var accept = !ext ? 0.35 : kind == "support_call" ? 0.6 : 0.25 + 0.3 * ag.PriceSensitivity;
+        if (_r.Chance(accept)) Schedule(W.Clock.AddHours(_r.Uniform(1, 72)), Kinds.OfferRedeem, accountId, arg: $"{id}|{kind}|{value}");
+    }
+
+    /// <summary>Вероятность, что принятое предложение отменит намерение уйти: зависит от причины и вида предложения</summary>
+    private static double RetentionEffect(string cause, string kind) => (cause, kind) switch
+    {
+        (Causes.Price, "discount") => 0.75,
+        (Causes.Price, "bonus") => 0.6,
+        (Causes.Price, "term_upgrade") => 0.5,
+        (Causes.Price, _) => 0.15,
+        (Causes.Dissatisfaction, "support_call") => 0.6,
+        (Causes.Dissatisfaction, _) => 0.2,
+        (Causes.Finance, "bonus") => 0.45,
+        (Causes.Finance, "discount") => 0.35,
+        (Causes.Finance, _) => 0.1,
+        _ => 0.05,
+    };
+
+    /// <summary>Событие, собранное в панели: применяется к snapshot системы на текущих часах и уходит в поток со следующим номером аккаунта.
+    /// Действие то же, что у самого клиента, поэтому состояние snapshot системы и анализатора не расходится</summary>
+    /// <returns>Причина отказа или null</returns>
+    public string? ApplyCommand(string type, long accountId, long? serviceId, JsonObject data, IEventSink sink)
+    {
+        _sink = sink;
+        if (!W.Agents.TryGetValue(accountId, out var ag)) return $"Клиента {accountId} нет в snapshot системы";
+        ServiceRec? s = null;
+        if (serviceId is { } sid && (!W.Services.TryGetValue(sid, out s) || s.OwnerId != accountId)) return $"Услуги {sid} нет у клиента {accountId}";
+        if (ag.Gone) return "Клиент уже ушёл: событие не применяется";
+        string? Str(string name) => data[name] is JsonValue v && v.TryGetValue<string>(out var x) ? x : null;
+        long Long(string name) => data[name] is JsonValue v && v.TryGetValue<long>(out var x) ? x : 0;
+        switch (type)
+        {
+            case "account.login": Login(accountId); break;
+            case "balance.topped_up": TopUp(accountId, Long("amount"), "card"); break;
+            case "service.autoprolong_changed":
+                var enabled = data["enabled"] is JsonValue e && e.TryGetValue<bool>(out var on) && on;
+                if (s!.AutoProlong == enabled) return enabled ? "Автопродление уже включено" : "Автопродление уже выключено";
+                AutoProlongChange(s.Id, enabled, 0);
+                break;
+            case "service.suspended":
+                if (s!.Status != ServiceStatuses.Active) return $"Услуга не активна (статус {s.Status})";
+                Suspend(s.Id);
+                break;
+            case "service.resumed":
+                if (s!.Status != ServiceStatuses.Suspended) return $"Услуга не выключена (статус {s.Status})";
+                Resume(s.Id);
+                break;
+            case "service.plan_changed": PlanChange(s!.Id, Str("direction") == "up", 0); break;
+            case "service.deleted": UserDelete(s!.Id, "user_request", 0); break;
+            case "ticket.opened": TicketOpen(accountId, Str("category") ?? "technical", 1); break;
+            case "nps.responded":
+                ag.LastNpsAt = W.Clock;
+                Emit("nps.responded", accountId, null, new JsonObject { ["score"] = Math.Clamp(Long("score"), 0, 10) });
+                break;
+            case "service.backup_downloaded": BackupDownload(s!.Id, 0); break;
+            case "dns.records_changed": DnsChange(accountId, Str("target") == "internal" ? "internal" : "external", 0); break;
+            case "retention.offer_sent": Offer(accountId, "panel", Str("kind")); break;
+            default: return $"Тип {type} не поддерживается";
+        }
+        return null;
+    }
+
+    private void BackupDownload(long serviceId, int intentNo)
+    {
+        var s = W.Services[serviceId];
+        var ag = W.Agents[s.OwnerId];
+        if (!s.Live || ag.Gone || !IntentActive(ag, intentNo)) return;
+        Emit("service.backup_downloaded", s.OwnerId, s.Id, new JsonObject { ["sizeGb"] = Math.Round(_r.Uniform(1, 60), 1) });
+    }
+
+    private void DnsChange(long accountId, string target, int intentNo)
+    {
+        var ag = W.Agents[accountId];
+        if (ag.Gone || !IntentActive(ag, intentNo)) return;
+        Emit("dns.records_changed", accountId, null, new JsonObject { ["records"] = _r.Next(1, 6), ["target"] = target });
+    }
+
+    /// <summary>Ответ в опросе при уходе: обычно совпадает с причиной, иногда — другой вариант</summary>
+    private string SurveyReason(string cause)
+    {
+        string[] all = ["price", "quality", "support", "project_ended", "budget", "testing_finished", "other"];
+        if (_r.Chance(0.2)) return _r.Pick(all);
+        return cause switch
+        {
+            Causes.Dissatisfaction => _r.Chance(0.5) ? "quality" : "support",
+            Causes.Price => "price",
+            Causes.Decay => "project_ended",
+            Causes.Finance or Causes.NonPayment => "budget",
+            Causes.Experiment => "testing_finished",
+            _ => "other",
+        };
     }
 
     private void OfferRedeem(long accountId, string arg)
@@ -820,7 +947,14 @@ public sealed partial class Simulation
         Emit("retention.offer_redeemed", accountId, null, new JsonObject { ["offerId"] = long.Parse(parts[0], CultureInfo.InvariantCulture) });
         if (parts[1] == "bonus") BonusGrant(accountId, long.Parse(parts[2], CultureInfo.InvariantCulture), "retention");
         ag.S = Math.Clamp(ag.S + 0.25, 0, 1);
-        if (ag.Intent is { Decided: false } && _r.Chance(0.6)) CancelIntent(ag, "retention");
+        if (!C.Ext.HeterogeneousRetention)
+        {
+            if (ag.Intent is { Decided: false } && _r.Chance(0.6)) CancelIntent(ag, "retention");
+        }
+        else if (ag.Intent is { Decided: false } open && _r.Chance(RetentionEffect(open.Cause, parts[1])))
+        {
+            CancelIntent(ag, "retention");
+        }
     }
 
     private void Verify(long accountId, string level)

@@ -1,6 +1,7 @@
 # Локальный стенд: docker compose -f docker-compose.local.yaml up --build -d
 # Панель http://localhost:8080, Swagger http://localhost:8081/api/v1/docs, Prometheus :9090, Grafana :3000.
-# Симулятор источника: --profile demo up -d source-sim (SIM_MODE=live | scenario).
+# Данные приходят только событиями симулятора (source-sim); настройки и пересоздание мира — страница «Симуляция».
+# EVENTS_ONLY=false — прежний режим: тестовые данные загружаются снимком в пустую БД.
 name: aeza-local
 
 services:
@@ -44,8 +45,10 @@ services:
       ENV_Auth__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?Задайте BOOTSTRAP_ADMIN_PASSWORD в .env (не короче 12 символов)}
       ENV_Auth__AnalystLogin: ${BOOTSTRAP_ANALYST_LOGIN:-}
       ENV_Auth__AnalystPassword: ${BOOTSTRAP_ANALYST_PASSWORD:-}
-      ENV_Auth__IngestToken: ${INGEST_TOKEN:-}
+      ENV_Auth__IngestToken: ${INGEST_TOKEN:?Задайте INGEST_TOKEN в .env (им симулятор отправляет события)}
       ENV_Spa__Enabled: "false"
+      ENV_Simulation__EventsOnly: ${EVENTS_ONLY:-true}
+      # Только при EVENTS_ONLY=false: снимок загружается в пустую БД
       ENV_Seed__File: /seed/data.json
       ENV_Seed__SourceAsOf: "2026-10-19T15:00:00Z"
       ENV_Seed__Label: organizer:test_data_yandex
@@ -70,29 +73,25 @@ services:
       - app
     restart: unless-stopped
 
-  # Симулятор системы-источника (синтетические события)
+  # Симулятор системы-источника: берёт настройки у сервиса (GET /api/v1/simulation/agent) и шлёт события
   source-sim:
     image: aeza-risk-app:local
     pull_policy: never
-    profiles: ["demo"]
     entrypoint: ["dotnet", "/app/simulator/Aeza.Risk.SourceSimulator.dll"]
     environment:
+      SIM_MODE: agent
       SIM_API: http://app:5000
       SIM_INGEST_TOKEN: ${INGEST_TOKEN:?Задайте INGEST_TOKEN в .env (им симулятор отправляет события)}
-      SIM_MODE: ${SIM_MODE:-live}
-      SIM_SEED: ${SIM_SEED:-42}
-      SIM_STEP_SECONDS: ${SIM_STEP_SECONDS:-15}
-      # Состояние симулятора переживает перезапуск (том simstate)
+      SIM_INIT: /app/simulator/organizer/data.json
+      # Мир и очередь отправки переживают перезапуск (том simstate)
       SIM_DIR: /state
-      SIM_INIT: /state/source-state.json,/seed/data.json
     volumes:
-      - ./test_data_yandex/data.json:/seed/data.json:ro
       - simstate:/state
     healthcheck:
       disable: true
     depends_on:
       - app
-    restart: "no"
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v3.15.1

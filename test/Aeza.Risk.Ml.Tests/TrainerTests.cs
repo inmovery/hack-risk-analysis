@@ -59,10 +59,47 @@ public sealed class TrainerTests
         Assert.Equal(7, card["seed"]!.GetValue<int>());
 
         using var zip = ZipFile.OpenRead(Path.Combine(dir, Trainer.BundleFile));
-        Assert.Equal(["model.onnx", "model.json", "report.md"], zip.Entries.Select(e => e.FullName));
+        var expectedEntries = card["explain"]!.GetValue<string>() == "treeshap"
+            ? new[] { "model.onnx", "model.json", "report.md", TreeEnsembleJson.FileName }
+            : ["model.onnx", "model.json", "report.md"];
+        Assert.Equal(expectedEntries, zip.Entries.Select(e => e.FullName));
         var report = File.ReadAllText(Path.Combine(dir, "report.md"));
-        Assert.Contains("Синтетика", report, StringComparison.Ordinal);
+        Assert.Contains("журналу симулятора", report, StringComparison.Ordinal);
         Assert.Contains("перемешанных метках", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FastTree_ExportsTrees_MatchingOnnx_ShapSumsToLogit()
+    {
+        var (rows, manifest) = Planted();
+        var dir = PointInTimeTests.TempDir();
+        var card = new Trainer(seed: 7, model: "fasttree").Run(rows, manifest, dir, truthPath: null, _ => { });
+        Assert.Equal("treeshap", card["explain"]!.GetValue<string>());
+
+        var trees = TreeEnsembleJson.Parse(File.ReadAllText(Path.Combine(dir, TreeEnsembleJson.FileName)));
+        Assert.Equal(MlFeatures.Names, trees.Features);
+        Assert.All(trees.Trees, t => Assert.Equal(t.NodeCover[0], t.LeafCover.Sum()));
+        var sample = rows.Take(300).Select(r => r.Features).ToList();
+        using var session = new InferenceSession(Path.Combine(dir, "model.onnx"));
+        var tensor = new Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<float>(sample.SelectMany(f => f).ToArray(), [sample.Count, MlFeatures.Names.Count]);
+        using var res = session.Run([NamedOnnxValue.CreateFromTensor(Trainer.OnnxInput, tensor)]);
+        var onnx = res.Single(r => r.Name == Trainer.OnnxOutput).AsEnumerable<float>().ToArray();
+        for (var i = 0; i < sample.Count; i++)
+        {
+            Assert.True(Math.Abs(trees.Probability(sample[i]) - onnx[i]) < 1e-4, $"строка {i}: деревья {trees.Probability(sample[i])}, ONNX {onnx[i]}");
+            var shap = TreeShap.Explain(trees, sample[i]);
+            Assert.Equal(trees.Logit(sample[i]), shap.Base + shap.Phi.Sum(), 6);
+        }
+        // Заложенный сигнал — в признаках с наибольшими вкладами
+        var mean = new double[MlFeatures.Names.Count];
+        foreach (var x in sample)
+        {
+            var phi = TreeShap.Explain(trees, x).Phi;
+            for (var j = 0; j < mean.Length; j++) mean[j] += Math.Abs(phi[j]) / sample.Count;
+        }
+        var top = Enumerable.Range(0, mean.Length).OrderByDescending(j => mean[j]).Take(2).Select(j => MlFeatures.Names[j]).ToList();
+        Assert.Contains("days_since_login", top);
+        Assert.Contains("funds_cover", top);
     }
 
     [Fact]

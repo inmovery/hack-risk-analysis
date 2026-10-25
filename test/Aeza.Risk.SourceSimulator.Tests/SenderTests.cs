@@ -18,11 +18,13 @@ public sealed class SenderTests
     {
         public Func<int, List<JsonObject>, HttpResponseMessage?> Script { get; set; } = (_, _) => null;
         public List<List<JsonObject>> Accepted { get; } = [];
+        public List<string?> Worlds { get; } = [];
         public int Calls { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var call = ++Calls;
+            Worlds.Add(request.Headers.TryGetValues(OutboxSender.WorldHeader, out var w) ? w.Single() : null);
             var body = JsonNode.Parse(await request.Content!.ReadAsStringAsync(ct))!;
             var events = body["events"]!.AsArray().Select(e => e!.AsObject()).ToList();
             var scripted = Script(call, events);
@@ -136,6 +138,37 @@ public sealed class SenderTests
         Assert.NotEqual(events.Select(e => e["eventId"]!.GetValue<string>()), events.Select(e => e["eventId"]!.GetValue<string>()).Order());
         foreach (var g in events.GroupBy(e => e["accountId"]!.GetValue<long>()))
             Assert.Equal(g.Select(e => e["accountSeq"]!.GetValue<long>()).Order(), g.Select(e => e["accountSeq"]!.GetValue<long>()));
+    }
+
+    [Fact]
+    public async Task WorldChanged_StopsSending_WithoutRetry()
+    {
+        var outbox = Outbox(25);
+        var fake = new FakeAnalyzer
+        {
+            Script = (call, _) => call == 2
+                ? new HttpResponseMessage(HttpStatusCode.Conflict) { Content = new StringContent("{\"code\":\"simulation_world_changed\",\"title\":\"x\"}", Encoding.UTF8, "application/problem+json") }
+                : null,
+        };
+        var sender = Sender(fake, outbox, new SenderOptions { BatchSize = 10, MinDelay = TimeSpan.FromMilliseconds(1), World = "3" });
+        await sender.RunAsync(() => new FileInfo(outbox).Length, () => T, stopWhenDrained: false, CancellationToken.None);
+
+        Assert.True(sender.WorldChanged);
+        Assert.Equal(2, fake.Calls); // 409 не повторяется
+        Assert.Equal(10, sender.Cursor.Events);
+        Assert.All(fake.Worlds, w => Assert.Equal("3", w));
+    }
+
+    [Fact]
+    public async Task OtherConflict_IsRetried_AndNoWorldHeaderWithoutWorld()
+    {
+        var outbox = Outbox(5);
+        var fake = new FakeAnalyzer { Script = (call, _) => call == 1 ? new HttpResponseMessage(HttpStatusCode.Conflict) { Content = new StringContent("{\"code\":\"other\"}") } : null };
+        var sender = Sender(fake, outbox);
+        await Drain(sender, outbox, T.AddMinutes(1));
+        Assert.False(sender.WorldChanged);
+        Assert.Equal(5, Ids(fake.Accepted).Count);
+        Assert.All(fake.Worlds, w => Assert.Null(w));
     }
 
     [Fact]

@@ -25,7 +25,7 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
     /// <inheritdoc />
     public async Task<MlModelActivated> UploadAsync(Stream bundle, string actor, CancellationToken cancellationToken)
     {
-        var (onnx, card, report) = await ReadBundleAsync(bundle, cancellationToken);
+        var (onnx, card, report, trees) = await ReadBundleAsync(bundle, cancellationToken);
         var root = card.RootElement;
         string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
         if (root.TryGetProperty("format", out var format) && format.ValueKind == JsonValueKind.Number && format.GetInt32() != 1)
@@ -45,13 +45,14 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
         var version = Str("version");
         if (version.Length is 0 or > 100) throw new MlModelRejectedException("card_invalid", "В карточке нет версии модели");
         OnnxShadowRuntime.Validate(onnx);
+        if (trees is not null) OnnxShadowRuntime.ValidateTrees(onnx, trees);
 
         var now = time.GetUtcNow();
         var entity = new MlModelEntity
         {
             Version = version, FeatureSchema = MlFeatures.Schema, Kind = Str("model") is { Length: > 0 and <= 40 } k ? k : "unknown",
             Synthetic = !root.TryGetProperty("synthetic", out var syn) || syn.ValueKind != JsonValueKind.False,
-            CardJson = root.GetRawText(), ReportMarkdown = report, Onnx = onnx, OnnxSha256 = sha, UploadedAt = now, UploadedBy = actor,
+            CardJson = root.GetRawText(), ReportMarkdown = report, Onnx = onnx, OnnxSha256 = sha, TreesJson = trees, UploadedAt = now, UploadedBy = actor,
         };
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         db.MlModels.Add(entity);
@@ -75,11 +76,37 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
         if (state?.ActiveMlModelId is not { } id) return null;
         state.ActiveMlModelId = null;
         state.MlRevision++;
+        // Без модели основной балл — снова правила, явно, а не скрытой подменой
+        var wasMl = state.ScoringPrimary == ScoringModes.Ml;
+        state.ScoringPrimary = ScoringModes.Rules;
         var job = RecalcQueue.Enqueue(db, "ml_model", time.GetUtcNow(), actor);
         await db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
-        await audit.WriteAsync(actor, "ml_model_deactivated", new { modelId = id }, cancellationToken);
+        await audit.WriteAsync(actor, "ml_model_deactivated", new { modelId = id, scoringReset = wasMl }, cancellationToken);
         return job.Id;
+    }
+
+    /// <inheritdoc />
+    public async Task<string> GetScoringAsync(CancellationToken cancellationToken) =>
+        await db.AppState.AsNoTracking().Select(s => s.ScoringPrimary).SingleOrDefaultAsync(cancellationToken) ?? ScoringModes.Ml;
+
+    /// <inheritdoc />
+    public async Task<MlScoringChanged> SetScoringAsync(string primary, string actor, CancellationToken cancellationToken)
+    {
+        if (!ScoringModes.IsValid(primary)) throw new ArgumentOutOfRangeException(nameof(primary), primary, "rules | ml");
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        var state = await db.AppState.FromSqlRaw("SELECT * FROM app_state WHERE id = 1 FOR UPDATE").SingleOrDefaultAsync(cancellationToken);
+        if (state is null) db.AppState.Add(state = new AppStateEntity());
+        if (state.ScoringPrimary == primary) return new MlScoringChanged(primary, false, null);
+        if (primary == ScoringModes.Ml && state.ActiveMlModelId is null) throw new MlModelRequiredException();
+        var from = state.ScoringPrimary;
+        state.ScoringPrimary = primary;
+        state.MlRevision++;
+        var job = RecalcQueue.Enqueue(db, "scoring", time.GetUtcNow(), actor);
+        await db.SaveChangesAsync(cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+        await audit.WriteAsync(actor, "scoring_changed", new { from, to = primary, modelId = state.ActiveMlModelId }, cancellationToken);
+        return new MlScoringChanged(primary, true, job.Id);
     }
 
     /// <inheritdoc />
@@ -114,7 +141,7 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
             RankingMetrics.Evaluate(labels, matured.Select(r => (double)(r.RulesScore ?? 0)).ToList(), probabilities: false));
     }
 
-    private static async Task<(byte[] Onnx, JsonDocument Card, string? Report)> ReadBundleAsync(Stream bundle, CancellationToken ct)
+    private static async Task<(byte[] Onnx, JsonDocument Card, string? Report, string? Trees)> ReadBundleAsync(Stream bundle, CancellationToken ct)
     {
         using var buffer = new MemoryStream();
         await bundle.CopyToAsync(buffer, ct);
@@ -142,6 +169,7 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
             var onnx = Entry("model.onnx", MaxBundleBytes) ?? throw new MlModelRejectedException("bundle_invalid", "В пакете нет model.onnx");
             var cardBytes = Entry("model.json", 1024 * 1024) ?? throw new MlModelRejectedException("bundle_invalid", "В пакете нет model.json");
             var report = Entry("report.md", 1024 * 1024) is { } r ? Encoding.UTF8.GetString(r) : null;
+            var trees = Entry(TreeEnsembleJson.FileName, 20 * 1024 * 1024) is { } t ? Encoding.UTF8.GetString(t) : null;
             JsonDocument card;
             try
             {
@@ -152,7 +180,7 @@ public sealed class MlModelStore(AppDbContext db, IAuditLog audit, TimeProvider 
                 throw new MlModelRejectedException("card_invalid", "model.json — не JSON");
             }
             if (card.RootElement.ValueKind != JsonValueKind.Object) throw new MlModelRejectedException("card_invalid", "model.json должен быть объектом");
-            return (onnx, card, report);
+            return (onnx, card, report, trees);
         }
         catch (InvalidDataException)
         {

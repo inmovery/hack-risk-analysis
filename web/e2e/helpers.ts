@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
 /** Адрес API: пусто — тот же origin, что и панель (Compose); иначе отдельный API-хост (раздельный деплой). */
 export const apiBase = (process.env.E2E_API_URL ?? '').replace(/\/+$/, '');
@@ -26,4 +26,12 @@ export async function generationOf(page: Page): Promise<number> {
   const label = page.getByTestId('generation-label');
   await expect(label).toBeVisible();
   return Number(await label.getAttribute('data-generation'));
+}
+
+/** Режим основного балла через API и ожидание поколения в этом режиме (для тестов, которым нужны правила) */
+export async function setScoring(request: APIRequestContext, mode: 'rules' | 'ml') {
+  const { token } = await (await request.get(apiUrl('/api/v1/auth/csrf'))).json();
+  const r = await request.put(apiUrl('/api/v1/ml/scoring'), { data: { primary: mode }, headers: { 'X-CSRF-TOKEN': token } });
+  expect([200, 202]).toContain(r.status());
+  await expect.poll(async () => (await (await request.get(apiUrl('/api/v1/analytics/summary'))).json()).generation?.scoring, { timeout: 60_000 }).toBe(mode);
 }

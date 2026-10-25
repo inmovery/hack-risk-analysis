@@ -54,7 +54,7 @@ public static class Dataset
             ["events"] = stats.Total,
             ["eventsByType"] = new JsonObject(stats.ByType.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
             ["platform"] = $"{Environment.OSVersion.Platform}/{System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}/.NET {Environment.Version}",
-            ["note"] = "Синтетика: история воспроизводится по seed и параметрам на той же платформе. truth.jsonl не загружается в анализатор.",
+            ["note"] = "История симулятора воспроизводится по seed и параметрам на той же платформе. truth.jsonl не загружается в анализатор.",
             ["files"] = new JsonObject(new[] { SnapshotFile, EventsFile, TruthFile, StateFile }.Select(f =>
             {
                 var path = Path.Combine(dir, f);

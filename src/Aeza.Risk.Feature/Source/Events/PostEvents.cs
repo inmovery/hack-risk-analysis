@@ -21,6 +21,9 @@ public class PostEvents
     /// <summary>Лимит тела пакета</summary>
     public const long MaxBodyBytes = 5L * 1024 * 1024;
 
+    /// <summary>Заголовок ревизии snapshot системы</summary>
+    public const string SimulationWorldHeader = "X-Simulation-World";
+
     private static async Task<Results<Ok<EventBatchResponse>, Accepted<EventBatchResponse>, ProblemHttpResult>> Handle(
         HttpRequest req, ISourceIngestion ingestion, IRecalcSignal signal, ILiveNotifier live, TimeProvider time,
         ILogger<PostEvents> log, CancellationToken cancellationToken)
@@ -42,9 +45,21 @@ public class PostEvents
         var valid = batch.Events.Where(e => e.IsValid).Select(e => new IngestItem(e.Index, e.Domain, e.Changes)).ToList();
         // Счётчики коннектора видят и отклонённые: путь первой ошибки (без значений) — «последняя ошибка» на странице «Источник»
         var firstError = errors.Keys.FirstOrDefault();
-        var result = valid.Count == 0 && rejected.Count == 0
-            ? IngestBatchResult.Empty
-            : await ingestion.IngestAsync(valid, new IngestMeta(SourceCodes.OriginPush, actor, batch.Synthetic, connector, rejected.Count, firstError), cancellationToken);
+        // Симулятор помечает пакет ревизией своего snapshot системы: пакеты пересозданного snapshot системы не применяются
+        long? world = long.TryParse(req.Headers[SimulationWorldHeader], out var w) ? w : null;
+        IngestBatchResult result;
+        try
+        {
+            result = valid.Count == 0 && rejected.Count == 0
+                ? IngestBatchResult.Empty
+                : await ingestion.IngestAsync(valid, new IngestMeta(SourceCodes.OriginPush, actor, batch.Synthetic, connector, rejected.Count, firstError, SimulationWorld: world),
+                    cancellationToken);
+        }
+        catch (SimulationWorldChangedException ex)
+        {
+            return AppProblems.Create(StatusCodes.Status409Conflict, $"Snapshot системы симуляции пересоздан (текущая ревизия {ex.Current}): пакет старого snapshot системы не применён",
+                "simulation_world_changed");
+        }
 
         var results = result.Results
             .Concat(rejected.Select(r => new IngestItemResult(r.Index, r.EventId, SourceCodes.Rejected, null, "invalid", [])))
@@ -74,6 +89,7 @@ public class PostEvents
                 .Accepts<EventBatchRequest>("application/json")
                 .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
                 .ProducesValidationProblem(StatusCodes.Status422UnprocessableEntity)
+                .ProducesProblem(StatusCodes.Status409Conflict)
                 .WithTags("Source")
                 .WithSummary("Приём пакета событий источника (v1 — состояние записи, v2 — доменное событие) с автоматическим пересчётом")
                 .WithDescription("Тело: { synthetic?, events: [...] }, ≤ 1000 событий, ≤ 5 МБ; форматы можно смешивать." +

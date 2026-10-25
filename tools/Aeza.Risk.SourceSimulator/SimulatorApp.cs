@@ -49,6 +49,7 @@ public static class SimulatorApp
                 "send" => await SendAsync(o, log, stop.Token),
                 "live" or "lifecycle" => await LiveAsync(o, log, scenario: false, stop.Token),
                 "scenario" => await LiveAsync(o, log, scenario: true, stop.Token),
+                "agent" => await AgentAsync(o, log, stop.Token),
                 _ => Usage(o.Mode),
             };
         }
@@ -65,7 +66,7 @@ public static class SimulatorApp
 
     private static int Usage(string mode)
     {
-        Console.Error.WriteLine($"Неизвестный режим «{mode}». Режимы: generate | send | live | scenario (SIM_MODE или первый аргумент).");
+        Console.Error.WriteLine($"Неизвестный режим «{mode}». Режимы: generate | send | live | scenario | agent (SIM_MODE или первый аргумент).");
         return 2;
     }
 
@@ -122,7 +123,7 @@ public static class SimulatorApp
         if (File.Exists(statePath))
         {
             sim = Simulation.Load(await File.ReadAllTextAsync(statePath, ct));
-            log.LogInformation("Продолжаю мир {RunId} с {Clock} (клиентов {Customers})", sim.W.RunId, Iso.Format(sim.W.Clock), sim.W.Accounts.Count);
+            log.LogInformation("Продолжаю snapshot системы {RunId} с {Clock} (клиентов {Customers})", sim.W.RunId, Iso.Format(sim.W.Clock), sim.W.Accounts.Count);
         }
         else
         {
@@ -131,7 +132,7 @@ public static class SimulatorApp
             var data = JsonNode.Parse(await File.ReadAllTextAsync(init, ct))!.AsObject();
             sim = Simulation.FromSourceData(data, SimConfig.Load(o.Config), o.Seed, DateTimeOffset.UtcNow, Dataset.Sha256(init));
             AtomicFile.Write(statePath, sim.Save());
-            log.LogInformation("Мир {RunId} из {Init}: клиентов {Customers}, услуг {Services}", sim.W.RunId, init, sim.W.Accounts.Count, sim.W.Services.Count);
+            log.LogInformation("Snapshot системы {RunId} из {Init}: клиентов {Customers}, услуг {Services}", sim.W.RunId, init, sim.W.Accounts.Count, sim.W.Services.Count);
         }
         sim.Narrate = m => log.LogInformation("▶ {Message}", m);
         using var http = Http(o);
@@ -239,6 +240,18 @@ public static class SimulatorApp
         return 0;
     }
 
+    /// <summary>Snapshot системы задаёт анализатор: симулятор опрашивает указания и шлёт только события</summary>
+    private static async Task<int> AgentAsync(Options o, ILogger log, CancellationToken ct)
+    {
+        using var http = Http(o);
+        await using var agent = new SimulationAgent(http, new AgentOptions
+        {
+            Dir = o.Dir, Init = o.Init, Config = o.Config, Batch = o.Batch, Poll = TimeSpan.FromSeconds(o.PollSeconds),
+        }, log);
+        await agent.RunAsync(ct);
+        return 0;
+    }
+
     private static async Task<bool> UploadIfAskedAsync(Options o, OutboxSender sender, ILogger log, CancellationToken ct)
     {
         var snapshot = Path.Combine(o.Dir, Dataset.SnapshotFile);
@@ -313,6 +326,8 @@ public sealed class Options
     public int Batch { get; private set; } = 1000;
     public int TickSeconds { get; private set; } = 5;
     public int StepSeconds { get; private set; } = 15;
+    /// <summary>agent: как часто читать указания анализатора</summary>
+    public int PollSeconds { get; private set; } = 2;
     public bool TruthDaily { get; private set; } = true;
     public bool Chaos { get; private set; } = true;
     /// <summary>send: push (пакетами по 1000, по умолчанию) или import (файл целиком, пакетный импорт анализатора)</summary>
@@ -321,7 +336,7 @@ public sealed class Options
     public static Options Parse(string[] args)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var name in new[] { "MODE", "DIR", "API", "INGEST_TOKEN", "SEED", "CUSTOMERS", "DAYS", "END", "CONFIG", "INIT", "UPLOAD_SNAPSHOT", "BATCH", "TICK_SECONDS", "STEP_SECONDS", "TRUTH_DAILY", "CHAOS", "VIA" })
+        foreach (var name in new[] { "MODE", "DIR", "API", "INGEST_TOKEN", "SEED", "CUSTOMERS", "DAYS", "END", "CONFIG", "INIT", "UPLOAD_SNAPSHOT", "BATCH", "TICK_SECONDS", "STEP_SECONDS", "TRUTH_DAILY", "CHAOS", "VIA", "POLL_SECONDS" })
             if (Environment.GetEnvironmentVariable("SIM_" + name) is { Length: > 0 } v) values[name] = v;
         for (var i = 0; i < args.Length; i++)
         {
@@ -356,6 +371,7 @@ public sealed class Options
         o.Batch = Math.Clamp(Int("BATCH") ?? o.Batch, 1, 1000);
         o.TickSeconds = Math.Clamp(Int("TICK_SECONDS") ?? o.TickSeconds, 1, 300);
         o.StepSeconds = Math.Clamp(Int("STEP_SECONDS") ?? o.StepSeconds, 1, 600);
+        o.PollSeconds = Math.Clamp(Int("POLL_SECONDS") ?? o.PollSeconds, 1, 60);
         o.TruthDaily = Bool("TRUTH_DAILY") ?? true;
         o.Chaos = Bool("CHAOS") ?? true;
         o.Via = (Get("VIA") ?? "push").ToLowerInvariant() is "import" ? "import" : "push";

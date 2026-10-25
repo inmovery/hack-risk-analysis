@@ -5,7 +5,7 @@ namespace Aeza.Risk.Core.Abstractions;
 /// <param name="Version">Версия из карточки</param>
 /// <param name="Kind">logistic | fasttree</param>
 /// <param name="FeatureSchema">Схема признаков</param>
-/// <param name="Synthetic">Обучена на синтетике</param>
+/// <param name="Synthetic">Обучена на данных симулятора</param>
 /// <param name="UploadedAt">Загружена</param>
 /// <param name="UploadedBy">Кем</param>
 /// <param name="OnnxSha256">SHA-256 ONNX</param>
@@ -39,6 +39,15 @@ public sealed class MlModelRejectedException(string code, string message) : Exce
     public string Code { get; } = code;
 }
 
+/// <summary>Режим основного балла</summary>
+/// <param name="Primary">rules | ml</param>
+/// <param name="Changed">Режим изменился</param>
+/// <param name="JobId">Пересчёт в новом режиме</param>
+public sealed record MlScoringChanged(string Primary, bool Changed, long? JobId);
+
+/// <summary>Режим ML нельзя включить без включённой модели</summary>
+public sealed class MlModelRequiredException() : Exception("Сначала загрузите ML-модель: без неё основной балл считается правилами");
+
 /// <summary>Теневые ML-модели</summary>
 public interface IMlModels
 {
@@ -50,6 +59,12 @@ public interface IMlModels
 
     /// <summary>Включённая модель</summary>
     Task<MlActiveModel?> GetActiveAsync(CancellationToken cancellationToken);
+
+    /// <summary>Выбранный режим основного балла</summary>
+    Task<string> GetScoringAsync(CancellationToken cancellationToken);
+
+    /// <summary>Сменить режим основного балла (rules | ml) и поставить пересчёт; ml без включённой модели — <see cref="MlModelRequiredException"/></summary>
+    Task<MlScoringChanged> SetScoringAsync(string primary, string actor, CancellationToken cancellationToken);
 
     /// <summary>Прогнозы модели против созревших исходов</summary>
     Task<MlOnlineEvaluation> EvaluateAsync(long modelId, CancellationToken cancellationToken);

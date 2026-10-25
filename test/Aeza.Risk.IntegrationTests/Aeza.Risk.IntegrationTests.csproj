@@ -28,5 +28,6 @@
     <Content Include="..\..\test_data_yandex\data.json" Link="organizer\data.json" CopyToOutputDirectory="PreserveNewest"/>
     <!-- Теневая ML-модель для тестов: логистическая регрессия на синтетике (tools/Aeza.Risk.Ml) -->
     <Content Include="Fixtures\ml\model-bundle.zip" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Fixtures\ml\model-bundle-fasttree.zip" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

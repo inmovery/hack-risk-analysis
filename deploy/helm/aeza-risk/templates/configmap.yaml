@@ -14,6 +14,7 @@ data:
   # Панель отдаёт отдельный под (nginx); сервис — только API
   ENV_Spa__Enabled: "false"
   ENV_Docs__RequireAuth: {{ .Values.app.docsRequireAuth | quote }}
+  ENV_Simulation__EventsOnly: {{ .Values.simulation.eventsOnly | quote }}
   {{- /* CORS нужен только раздельным хостам: при одном адресе панель и API — один origin */}}
   {{- $origins := .Values.app.corsOrigins }}
   {{- if and (not $origins) (not (include "aeza-risk.single" .)) }}

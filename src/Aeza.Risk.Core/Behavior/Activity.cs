@@ -37,6 +37,14 @@ public sealed class ActivityDelta
     public int Deletions { get; set; }
     /// <summary>Сгоревших бонусов (bonus.expired) — конец промо</summary>
     public int BonusExpired { get; set; }
+    /// <summary>Выгрузок резервных копий (service.backup_downloaded) — данные забирают</summary>
+    public int BackupDownloads { get; set; }
+    /// <summary>Переводов DNS к другому провайдеру (dns.records_changed, target = external)</summary>
+    public int DnsExternal { get; set; }
+    /// <summary>Отправленных удерживающих предложений</summary>
+    public int RetentionOffers { get; set; }
+    /// <summary>Попаданий в контрольную группу удержания</summary>
+    public int RetentionHoldouts { get; set; }
     /// <summary>Доменных событий аккаунта за день (любых типов, включая неизвестные)</summary>
     public int Events { get; set; }
 
@@ -66,6 +74,10 @@ public sealed class ActivityDelta
         Renewals += o.Renewals;
         Deletions += o.Deletions;
         BonusExpired += o.BonusExpired;
+        BackupDownloads += o.BackupDownloads;
+        DnsExternal += o.DnsExternal;
+        RetentionOffers += o.RetentionOffers;
+        RetentionHoldouts += o.RetentionHoldouts;
         Events += o.Events;
     }
 
@@ -151,6 +163,18 @@ public static class ActivityProjection
                 break;
             case "bonus.expired":
                 d.BonusExpired = 1;
+                break;
+            case "service.backup_downloaded":
+                d.BackupDownloads = 1;
+                break;
+            case "dns.records_changed":
+                if (Str(data, "target") == "external") d.DnsExternal = 1;
+                break;
+            case "retention.offer_sent":
+                d.RetentionOffers = 1;
+                break;
+            case "retention.holdout":
+                d.RetentionHoldouts = 1;
                 break;
         }
         return (account, day, d);

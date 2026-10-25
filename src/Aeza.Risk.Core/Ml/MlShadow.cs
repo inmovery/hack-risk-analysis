@@ -9,10 +9,11 @@ public sealed record MlModelRef(long Id, string Version);
 
 /// <summary>Прогноз модели для услуги в области применения</summary>
 /// <param name="ServiceId">Услуга</param>
-/// <param name="Probability">Вероятность «не продлено» по модели (синтетика — не качество на реальных клиентах)</param>
+/// <param name="Probability">Вероятность «не продлено» по модели</param>
 /// <param name="DaysToExpiry">Дней до срока на момент оценки</param>
 /// <param name="RulesScore">Балл правил той же услуги в этом поколении</param>
-public sealed record MlShadowServiceDto(long ServiceId, double Probability, double DaysToExpiry, decimal? RulesScore);
+/// <param name="Drivers">Вклады факторов в вероятность (<see cref="MlExplain"/>)</param>
+public sealed record MlShadowServiceDto(long ServiceId, double Probability, double DaysToExpiry, decimal? RulesScore, IReadOnlyList<MlDriver>? Drivers = null);
 
 /// <summary>Теневая модель в карточке клиента: не влияет на балл, уровень, сортировки и деньги</summary>
 /// <param name="ModelId">Номер модели</param>
@@ -21,7 +22,9 @@ public sealed record MlShadowServiceDto(long ServiceId, double Probability, doub
 /// <param name="Probability">Наибольшая вероятность «не продлено» среди услуг клиента в окне модели</param>
 /// <param name="ServiceId">Услуга с наибольшей вероятностью</param>
 /// <param name="Services">Прогнозы по услугам</param>
-public sealed record MlShadowDto(long ModelId, string ModelVersion, string State, double? Probability, long? ServiceId, IReadOnlyList<MlShadowServiceDto> Services);
+/// <param name="Explain">Как посчитаны вклады факторов: treeshap — точные вклады деревьев, occlusion — сравнение с типичным клиентом</param>
+public sealed record MlShadowDto(
+    long ModelId, string ModelVersion, string State, double? Probability, long? ServiceId, IReadOnlyList<MlShadowServiceDto> Services, string? Explain = null);
 
 /// <summary>Теневая модель в поколении</summary>
 /// <param name="ModelId">Номер модели</param>
@@ -56,9 +59,10 @@ public static class MlShadow
     /// <param name="behavior">Поведение клиентов на момент оценки</param>
     /// <param name="asOf">Момент оценки</param>
     /// <param name="predict">Инференс: строки × признаки (подряд) → вероятности; исключение — сбой</param>
+    /// <param name="trees">Деревья модели для точных вкладов (TreeSHAP); null — вклады по сравнению с типичным клиентом</param>
     public static MlShadowResult Run(
         MlModelRef model, EngineResult result, SourceData data, IReadOnlyDictionary<long, AccountBehavior> behavior, DateTimeOffset asOf,
-        Func<float[], int, float[]> predict)
+        Func<float[], int, float[]> predict, TreeEnsemble? trees = null)
     {
         var sw = Stopwatch.StartNew();
         var servicesByOwner = data.Services.ToLookup(s => s.OwnerId);
@@ -94,8 +98,21 @@ public static class MlShadow
             return new MlShadowResult(failed, empty, []);
         }
 
+        // Вклады факторов: точные по деревьям, если пакет их содержит, иначе — второй проход модели со значениями типичного клиента.
+        // Если объяснение не удалось, прогноз остаётся без вкладов
+        IReadOnlyList<MlDriver>[]? drivers;
+        var explain = trees is not null ? MlExplain.TreeShapMethod : MlExplain.OcclusionMethod;
+        try
+        {
+            drivers = trees is not null ? MlExplain.FromShap(trees, batch, rows.Count, p) : MlExplain.Explain(batch, rows.Count, p, predict);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            drivers = null;
+            explain = null;
+        }
         var services = rows.Select((r, i) => (r.Customer.Account.Id, Dto: new MlShadowServiceDto(r.Service.Id, Math.Round(p[i], 4),
-            Math.Round((r.Service.ExpiresAt!.Value - asOf).TotalDays, 2), r.Rules), r.Service)).ToList();
+            Math.Round((r.Service.ExpiresAt!.Value - asOf).TotalDays, 2), r.Rules, drivers?[i] ?? []), r.Service)).ToList();
         var customers = new Dictionary<long, MlShadowDto>();
         var byCustomer = services.ToLookup(x => x.Id, x => x.Dto);
         foreach (var c in result.Customers)
@@ -103,7 +120,7 @@ public static class MlShadow
             var own = byCustomer[c.Account.Id].OrderByDescending(x => x.Probability).ThenBy(x => x.ServiceId).ToList();
             customers[c.Account.Id] = own.Count == 0
                 ? new MlShadowDto(model.Id, model.Version, "out_of_scope", null, null, [])
-                : new MlShadowDto(model.Id, model.Version, "scored", own[0].Probability, own[0].ServiceId, own);
+                : new MlShadowDto(model.Id, model.Version, "scored", own[0].Probability, own[0].ServiceId, own, explain);
         }
 
         var k = rows.Count == 0 ? 0 : Math.Max(1, (int)Math.Ceiling(rows.Count * CapacityShare));

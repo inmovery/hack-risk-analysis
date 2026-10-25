@@ -68,6 +68,7 @@ public sealed class BehaviorRepository(AppDbContext db) : IBehaviorRepository
         PaymentsCount = r.PaymentsCount, PaymentsMinor = r.PaymentsMinor, PaymentsFailed = r.PaymentsFailed, TopUpsCount = r.TopUpsCount,
         TopUpsMinor = r.TopUpsMinor, Downgrades = r.Downgrades, Upgrades = r.Upgrades, AutoProlongOff = r.AutoProlongOff, Suspends = r.Suspends,
         WithdrawalsMinor = r.WithdrawalsMinor, Backups = r.Backups, Renewals = r.Renewals, Deletions = r.Deletions, BonusExpired = r.BonusExpired,
+        BackupDownloads = r.BackupDownloads, DnsExternal = r.DnsExternal, RetentionOffers = r.RetentionOffers, RetentionHoldouts = r.RetentionHoldouts,
         Events = r.Events,
     });
 }

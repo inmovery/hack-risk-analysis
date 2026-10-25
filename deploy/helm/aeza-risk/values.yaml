@@ -11,8 +11,8 @@ image:
 imagePullSecrets:
   - name: gitlab-registry
 
-# Secret сервиса: app-db-password, admin-login, admin-password,
-# необязательные analyst-login, analyst-password, ingest-token (коннектор http-push)
+# Secret сервиса: app-db-password, admin-login, admin-password, ingest-token (коннектор http-push, им же работает симулятор),
+# необязательные analyst-login, analyst-password
 existingSecret: aeza-risk-secrets
 
 database:
@@ -92,7 +92,26 @@ ingress:
   # /metrics снаружи: без авторизации, только бизнес-агрегаты без PII
   publicMetrics: true
 
-# Импорт тестовых данных в пустую БД: --set-file seed.data=test_data_yandex/data.json
+simulation:
+  # Данные приходят только событиями симулятора; тестовые данные организаторов он передаёт как события начального мира.
+  # Настройки и пересоздание мира — страница «Симуляция» панели
+  eventsOnly: true
+  simulator:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: {}
+    persistence:
+      enabled: true
+      size: 1Gi
+      # Пусто — класс хранения кластера по умолчанию
+      storageClass: ""
+
+# Импорт тестовых данных в пустую БД (только при simulation.eventsOnly=false): --set-file seed.data=test_data_yandex/data.json
 seed:
   data: ""
   sourceAsOf: "2026-10-19T15:00:00Z"

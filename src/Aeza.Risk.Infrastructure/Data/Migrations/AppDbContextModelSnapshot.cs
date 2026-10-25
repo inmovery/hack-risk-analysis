@@ -48,6 +48,14 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("ml_revision");
 
+                    b.Property<string>("ScoringPrimary")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("ml")
+                        .HasColumnName("scoring_primary");
+
                     b.Property<long>("SourceSeq")
                         .HasColumnType("bigint")
                         .HasColumnName("source_seq");
@@ -251,6 +259,10 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("auto_prolong_off");
 
+                    b.Property<int>("BackupDownloads")
+                        .HasColumnType("integer")
+                        .HasColumnName("backup_downloads");
+
                     b.Property<int>("Backups")
                         .HasColumnType("integer")
                         .HasColumnName("backups");
@@ -270,6 +282,10 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                     b.Property<int>("Deletions")
                         .HasColumnType("integer")
                         .HasColumnName("deletions");
+
+                    b.Property<int>("DnsExternal")
+                        .HasColumnType("integer")
+                        .HasColumnName("dns_external");
 
                     b.Property<int>("Downgrades")
                         .HasColumnType("integer")
@@ -310,6 +326,14 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                     b.Property<int>("Renewals")
                         .HasColumnType("integer")
                         .HasColumnName("renewals");
+
+                    b.Property<int>("RetentionHoldouts")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_holdouts");
+
+                    b.Property<int>("RetentionOffers")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_offers");
 
                     b.Property<int>("Suspends")
                         .HasColumnType("integer")
@@ -731,6 +755,10 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("synthetic");
 
+                    b.Property<string>("TreesJson")
+                        .HasColumnType("text")
+                        .HasColumnName("trees_json");
+
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("uploaded_at");
@@ -996,6 +1024,138 @@ namespace Aeza.Risk.Infrastructure.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Aeza.Risk.Core.Entities.SimulationCommandEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("data_json");
+
+                    b.Property<string>("EventIdsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("event_ids_json");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("message");
+
+                    b.Property<long?>("ServiceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("service_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("WorldRevision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("world_revision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorldRevision", "Status");
+
+                    b.ToTable("simulation_commands", (string)null);
+                });
+
+            modelBuilder.Entity("Aeza.Risk.Core.Entities.SimulationStateEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AgentReportedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("agent_reported_at");
+
+                    b.Property<string>("AgentStatusJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("agent_status_json");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<long>("ScenarioRequest")
+                        .HasColumnType("bigint")
+                        .HasColumnName("scenario_request");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("settings_json");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<DateTimeOffset?>("WorldResetAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("world_reset_at");
+
+                    b.Property<string>("WorldResetBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("world_reset_by");
+
+                    b.Property<long>("WorldRevision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("world_revision");
+
+                    b.Property<string>("WorldSettingsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("world_settings_json");
+
+                    b.Property<DateTimeOffset>("WorldStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("world_started_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("simulation_state", (string)null);
                 });
 
             modelBuilder.Entity("Aeza.Risk.Core.Entities.SourceAccountStreamEntity", b =>

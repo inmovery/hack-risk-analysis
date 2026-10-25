@@ -262,15 +262,17 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
             if (state?.LatestSourceSnapshotId is { } baseId && state.LatestModelRevisionId is { } mid)
             {
                 data = await CurrentStateStore.LoadAllAsync(db, ct);
-                var b = await db.SourceSnapshots.AsNoTracking().Where(s => s.Id == baseId).Select(s => new { s.Id, s.Revision, s.SourceAsOf }).SingleAsync(ct);
+                var b = await db.SourceSnapshots.AsNoTracking().Where(s => s.Id == baseId)
+                    .Select(s => new { s.Id, s.Revision, s.SourceAsOf, Empty = s.AccountsCount + s.ServicesCount + s.TransactionsCount == 0 }).SingleAsync(ct);
                 snapshot = (b.Id, b.Revision, b.SourceAsOf);
                 var seq = state.SourceSeq;
                 syntheticEvents = await db.SourceEvents.AnyAsync(e => e.OccurredAt > b.SourceAsOf && e.Seq <= seq && e.Synthetic && e.Outcome == "applied", ct);
                 model = await db.ModelRevisions.AsNoTracking().SingleAsync(m => m.Id == mid, ct);
                 settings = AppJson.Deserialize<ModelSettingsDto>(model.SettingsJson).ToModel();
+                // Пустая база (только события): «на момент данных» — последнее изменение источника
                 asOf = settings.Clock.Mode == ClockMode.Live
                     ? new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero)
-                    : b.SourceAsOf;
+                    : b.Empty ? state.SourceUpdatedAt ?? now : b.SourceAsOf;
                 behavior = await BehaviorRepository.LoadAsync(db, asOf, ct);
             }
             await read.CommitAsync(ct);
@@ -293,11 +295,13 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
         }
 
         var sw = Stopwatch.StartNew();
-        var result = engine.Evaluate(data, settings, asOf, behavior.Accounts);
+        var rules = engine.Evaluate(data, settings, asOf, behavior.Accounts);
         var txByCustomer = data.Transactions.Join(data.Services, t => t.ServiceId, s => s.Id, (t, s) => (s.OwnerId, t))
             .ToLookup(x => x.OwnerId, x => x.t);
-        var ml = state.ActiveMlModelId is { } mlId ? await RunShadowAsync(db, mlId, result, data, behavior, asOf, ct) : null;
-        var summary = GenerationPublishing.BuildSummary(result) with { MlShadow = ml?.Summary };
+        // Модель всегда сверяется с правилами; при режиме ML основной балл пересчитывается из её вероятностей
+        var ml = state.ActiveMlModelId is { } mlId ? await RunShadowAsync(db, mlId, rules, data, behavior, asOf, ct) : null;
+        var (result, scoring) = ApplyScoring(state.ScoringPrimary, rules, ml, data, settings, asOf, behavior);
+        var summary = GenerationPublishing.BuildSummary(result) with { MlShadow = ml?.Summary, Scoring = scoring };
 
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
         var generation = new GenerationEntity
@@ -315,7 +319,8 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
 
         var appState = await db.AppState.FromSqlRaw("SELECT * FROM app_state WHERE id = 1 FOR UPDATE").SingleAsync(ct);
         var current = appState.ActiveGenerationId is { } cg ? await db.Generations.AsNoTracking().SingleOrDefaultAsync(g => g.Id == cg, ct) : null;
-        var publish = GenerationPublishing.ShouldPublish(current, generation);
+        // База поколения должна оставаться текущей: после пересоздания snapshot системы расчёт по удалённым данным не публикуется
+        var publish = GenerationPublishing.ShouldPublish(current, generation) && appState.LatestSourceSnapshotId == snap.Id;
         if (publish) appState.ActiveGenerationId = generation.Id;
         // Прогнозы в точках решения копятся только при живых часах: момент оценки = сейчас, признаки не видят будущего
         if (publish && ml is { Summary.State: "scored" } && settings.Clock.Mode == ClockMode.Live)
@@ -347,6 +352,24 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
         job.LeaseUntil = null;
     }
 
+    /// <summary>Основной балл: правила или вероятности модели; при недоступной модели — правила с явной причиной</summary>
+    private (EngineResult Result, ScoringInfo Scoring) ApplyScoring(
+        string primary, EngineResult rules, MlShadowResult? ml, SourceData data, ModelSettings settings, DateTimeOffset asOf, BehaviorInput behavior)
+    {
+        if (primary != ScoringModes.Ml) return (rules, ScoringInfo.Rules);
+        if (ml is null) return (rules, new ScoringInfo(ScoringModes.Ml, ScoringModes.Rules, null, null, "no_model"));
+        if (ml.Summary.State != "scored")
+        {
+            log.LogWarning("ML scoring requested but model {ModelId} failed ({Code}): generation uses rules", ml.Summary.ModelId, ml.Summary.ErrorCode);
+            return (rules, new ScoringInfo(ScoringModes.Ml, ScoringModes.Rules, ml.Summary.ModelId, ml.Summary.Version, "ml_failed"));
+        }
+        var services = ml.Customers.Values.SelectMany(c => c.Services)
+            .ToDictionary(s => s.ServiceId, s => new MlServiceScore(s.Probability, s.Drivers ?? []));
+        var model = new MlModelRef(ml.Summary.ModelId, ml.Summary.Version);
+        return (engine.Evaluate(data, settings, asOf, behavior.Accounts, new MlPrimary(model, services)),
+            new ScoringInfo(ScoringModes.Ml, ScoringModes.Ml, model.Id, model.Version, null));
+    }
+
     /// <summary>Теневая модель: те же признаки, что при обучении</summary>
     private async Task<MlShadowResult> RunShadowAsync(AppDbContext db, long modelId, EngineResult result, SourceData data, BehaviorInput behavior,
         DateTimeOffset asOf, CancellationToken ct)
@@ -357,8 +380,8 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
         {
             if (shadow.LoadedModelId != modelId)
             {
-                var onnx = await db.MlModels.AsNoTracking().Where(m => m.Id == modelId).Select(m => m.Onnx).SingleAsync(ct);
-                shadow.Load(modelId, onnx);
+                var stored = await db.MlModels.AsNoTracking().Where(m => m.Id == modelId).Select(m => new { m.Onnx, m.TreesJson }).SingleAsync(ct);
+                shadow.Load(modelId, stored.Onnx, stored.TreesJson);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -367,7 +390,7 @@ FROM next WHERE j.id = next.id RETURNING j.id", conn, tx);
             return MlShadow.Run(model, result, data, behavior.Accounts, asOf, (_, _) => throw new InvalidOperationException("load_error"));
         }
         var timeout = TimeSpan.FromSeconds(_opt.MlShadowTimeoutSeconds);
-        var run = MlShadow.Run(model, result, data, behavior.Accounts, asOf, (batch, rows) => shadow.Predict(batch, rows, timeout));
+        var run = MlShadow.Run(model, result, data, behavior.Accounts, asOf, (batch, rows) => shadow.Predict(batch, rows, timeout), shadow.Trees);
         if (run.Summary.State == "failed")
             log.LogWarning("Shadow model {ModelId} inference failed ({Code}); rules unaffected", modelId, run.Summary.ErrorCode);
         else

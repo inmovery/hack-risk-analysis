@@ -19,6 +19,7 @@ public sealed class MlModelConfiguration : IEntityTypeConfiguration<MlModelEntit
         builder.Property(x => x.Kind).HasMaxLength(40);
         builder.Property(x => x.CardJson).HasColumnType("jsonb");
         builder.Property(x => x.OnnxSha256).HasMaxLength(64);
+        builder.Property(x => x.TreesJson).HasColumnType("text");
         builder.Property(x => x.UploadedBy).HasMaxLength(100);
     }
 }

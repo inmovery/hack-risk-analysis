@@ -145,6 +145,13 @@ public sealed class Trainer(int seed = 42, int graceDays = 5, int testDays = 90,
             ml.Model.ConvertToOnnx(best.Model, ml.Data.LoadFromEnumerable([new MlInput { Features = new float[MlFeatures.Names.Count] }], Schema<MlInput>()), f);
         var parity = Parity(onnxPath, test, best.Probs);
         if (parity > 1e-4) throw new InvalidOperationException($"ONNX расходится с ML.NET: {parity}");
+        // Структура деревьев для точных вкладов (TreeSHAP) в анализаторе; покрытие узлов — по обучающим строкам
+        var probe = Math.Min(test.Count, 2000);
+        var trees = TreeExport.From(best.Model, MlFeatures.Names, train.Select(r => r.Features).ToList(), test.Take(probe).Select(r => r.Features).ToList(),
+            best.Probs.Take(probe).ToList());
+        var treesPath = Path.Combine(outDir, TreeEnsembleJson.FileName);
+        if (trees is not null) File.WriteAllText(treesPath, TreeEnsembleJson.Serialize(trees));
+        else File.Delete(treesPath);
 
         var createdAt = DateTimeOffset.UtcNow;
         var onnxSha = DatasetFile.Sha256(onnxPath);
@@ -188,8 +195,10 @@ public sealed class Trainer(int seed = 42, int graceDays = 5, int testDays = 90,
             ["causes"] = causes,
             ["onnxSha256"] = onnxSha,
             ["parityMaxAbsDiff"] = parity,
+            ["explain"] = trees is null ? "occlusion" : "treeshap",
+            ["treesSha256"] = trees is null ? null : DatasetFile.Sha256(Path.Combine(outDir, TreeEnsembleJson.FileName)),
             ["note"] = dataset["synthetic"]?.GetValue<bool>() == true
-                ? "Синтетика: метрики — проверка конвейера, а не качество на реальных клиентах. Модель работает только в тени."
+                ? "Обучено на журнале симулятора."
                 : "Модель работает только в тени: продвижение — после проверки на реальных исходах и согласия по бизнес-цели.",
         };
         var opts = new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -198,13 +207,13 @@ public sealed class Trainer(int seed = 42, int graceDays = 5, int testDays = 90,
         var bundle = Path.Combine(outDir, BundleFile);
         if (File.Exists(bundle)) File.Delete(bundle);
         using (var zip = ZipFile.Open(bundle, ZipArchiveMode.Create))
-            foreach (var file in new[] { "model.onnx", "model.json", "report.md" })
+            foreach (var file in new[] { "model.onnx", "model.json", "report.md", TreeEnsembleJson.FileName }.Where(f => File.Exists(Path.Combine(outDir, f))))
                 zip.CreateEntryFromFile(Path.Combine(outDir, file), file);
         log($"Выбрана {chosen}; ONNX {new FileInfo(onnxPath).Length} байт, расхождение с ML.NET {parity:E1}; пакет {bundle}");
         return card;
     }
 
-    private IEstimator<ITransformer> Pipeline(MLContext ml, string name) => name == "logistic"
+    internal static IEstimator<ITransformer> Pipeline(MLContext ml, string name) => name == "logistic"
         ? ml.Transforms.NormalizeMinMax("Features").Append(ml.BinaryClassification.Trainers.LbfgsLogisticRegression(
             new LbfgsLogisticRegressionBinaryTrainer.Options { L2Regularization = 1f, MaximumNumberOfIterations = 200 }))
         : ml.BinaryClassification.Trainers.FastTree(new FastTreeBinaryTrainer.Options
@@ -212,18 +221,44 @@ public sealed class Trainer(int seed = 42, int graceDays = 5, int testDays = 90,
             NumberOfLeaves = 20, NumberOfTrees = 200, MinimumExampleCountPerLeaf = 20, LearningRate = 0.1, NumberOfThreads = 1,
         });
 
-    private static SchemaDefinition Schema<T>()
+    private static SchemaDefinition Schema<T>(int size)
     {
         var s = SchemaDefinition.Create(typeof(T));
-        s["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, MlFeatures.Names.Count);
+        s["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, size);
         return s;
     }
 
-    private static IDataView Load(MLContext ml, IEnumerable<DatasetRow> rows) =>
+    private static SchemaDefinition Schema<T>() => Schema<T>(MlFeatures.Names.Count);
+
+    internal static IDataView Load(MLContext ml, IEnumerable<DatasetRow> rows) =>
         ml.Data.LoadFromEnumerable(rows.Select(r => new MlRow { Label = r.Label == 1, Features = r.Features }).ToList(), Schema<MlRow>());
 
-    private static double[] Predict(ITransformer model, MLContext ml, IEnumerable<DatasetRow> rows) =>
+    internal static double[] Predict(ITransformer model, MLContext ml, IEnumerable<DatasetRow> rows) =>
         model.Transform(Load(ml, rows)).GetColumn<float>("Probability").Select(p => (double)p).ToArray();
+
+    /// <summary>Строки произвольной схемы признаков (размер вектора — <paramref name="size"/>)</summary>
+    internal static IDataView LoadVectors(MLContext ml, IEnumerable<(bool Label, float[] Features)> rows, int size) =>
+        ml.Data.LoadFromEnumerable(rows.Select(r => new MlRow { Label = r.Label, Features = r.Features }).ToList(), Schema<MlRow>(size));
+
+    internal static double[] PredictVectors(ITransformer model, MLContext ml, IEnumerable<float[]> rows, int size) =>
+        model.Transform(LoadVectors(ml, rows.Select(f => (false, f)), size)).GetColumn<float>("Probability").Select(p => (double)p).ToArray();
+
+    /// <summary>Экспорт в ONNX для схемы размера <paramref name="size"/></summary>
+    internal static void ExportOnnx(MLContext ml, ITransformer model, int size, string path)
+    {
+        using var f = File.Create(path);
+        ml.Model.ConvertToOnnx(model, ml.Data.LoadFromEnumerable([new MlInput { Features = new float[size] }], Schema<MlInput>(size)), f);
+    }
+
+    internal static double OnnxParity(string onnx, IReadOnlyList<float[]> rows, IReadOnlyList<double> expected, int size)
+    {
+        using var session = new InferenceSession(onnx);
+        var n = Math.Min(rows.Count, 2000);
+        var t = new DenseTensor<float>(rows.Take(n).SelectMany(r => r).ToArray(), [n, size]);
+        using var res = session.Run([NamedOnnxValue.CreateFromTensor(OnnxInput, t)]);
+        var p = res.Single(r => r.Name == OnnxOutput).AsEnumerable<float>().ToArray();
+        return Enumerable.Range(0, n).Max(i => Math.Abs(p[i] - expected[i]));
+    }
 
     private static double Parity(string onnx, IReadOnlyList<DatasetRow> rows, IReadOnlyList<double> expected)
     {
@@ -281,15 +316,15 @@ public sealed class Trainer(int seed = 42, int graceDays = 5, int testDays = 90,
         return result;
     }
 
-    private static double RulesDefault(DatasetRow r) => (double)(r.RulesScore ?? 0);
+    internal static double RulesDefault(DatasetRow r) => (double)(r.RulesScore ?? 0);
 
-    private static double RulesWide(DatasetRow r) => (double)(r.RulesScoreWide ?? 0);
+    internal static double RulesWide(DatasetRow r) => (double)(r.RulesScoreWide ?? 0);
 
-    private static JsonObject Json(RankMetrics m) => new()
+    internal static JsonObject Json(RankMetrics m) => new()
     {
         ["rows"] = m.Rows, ["positives"] = m.Positives, ["prAuc"] = Round(m.PrAuc), ["rocAuc"] = Round(m.RocAuc), ["k"] = m.K,
         ["precisionAtK"] = Round(m.PrecisionAtK), ["recallAtK"] = Round(m.RecallAtK), ["brier"] = m.Brier is { } b ? Round(b) : null,
     };
 
-    private static double Round(double x) => double.IsNaN(x) ? 0 : Math.Round(x, 4);
+    internal static double Round(double x) => double.IsNaN(x) ? 0 : Math.Round(x, 4);
 }

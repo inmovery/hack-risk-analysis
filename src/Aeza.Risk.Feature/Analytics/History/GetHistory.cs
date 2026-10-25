@@ -52,8 +52,7 @@ public class GetHistory
         var series = new List<HistoryDay>();
         for (var d = from; d <= today; d = d.AddDays(1))
             series.Add(actual.GetValueOrDefault(d) ?? new HistoryDay(d, 0, 0, 0, 0, 0, 0, 0, 0, 0));
-        var note = $"Факт по дню получения события; журнал с {started.UtcDateTime:dd.MM.yyyy HH:mm} UTC. Дни до подключения потока не заполняются нулями."
-                   + (coverage.Synthetic ? " Среди событий есть синтетика (симулятор)." : "");
+        var note = $"Факт по дню получения события; журнал с {started.UtcDateTime:dd.MM.yyyy HH:mm} UTC. Дни до подключения потока не заполняются нулями.";
         return TypedResults.Ok(new HistoryResponse(coverage, series, outcomes, note));
     }
 

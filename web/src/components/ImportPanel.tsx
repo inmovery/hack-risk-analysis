@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE, apiUrl, ensureCsrf } from '../api/client';
 import { useImport } from '../api/queries';
 import { Banner } from './ui';
+import { Button, Checkbox } from './controls';
 import type { ImportView } from '../api/types';
 
 const statusLabel: Record<ImportView['status'], string> = {
@@ -88,8 +89,8 @@ export function ImportPanel() {
       <div className="toolbar">
         <input ref={input} type="file" accept=".jsonl,.ndjson,.gz,.txt" aria-label="Файл истории событий" data-testid="import-file"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <label className="small"><input type="checkbox" checked={synthetic} onChange={(e) => setSynthetic(e.target.checked)} /> синтетика (симулятор)</label>
-        <button className="btn btn-primary btn-sm" disabled={!file || progress !== null} onClick={() => void start()} data-testid="import-start">Импортировать</button>
+        <Checkbox checked={synthetic} onChange={setSynthetic} label="События симулятора" testId="import-simulated" />
+        <Button variant="primary" size="sm" disabled={!file} loading={progress !== null} onClick={() => void start()} testId="import-start">Импортировать</Button>
       </div>
       {progress !== null && <span className="caption secondary" role="status">Отправка файла: {Math.round(progress * 100)}%</span>}
       {error && <Banner tone="danger">{error}</Banner>}

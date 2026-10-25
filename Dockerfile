@@ -1,4 +1,4 @@
-# Один образ: сервис (с панелью в wwwroot), Migrator и симулятор источника.
+# Один образ: сервис (с панелью в wwwroot), Migrator и симулятор источника (с тестовыми данными организаторов).
 
 # Панель (React)
 FROM node:24.22.1-alpine AS web
@@ -30,6 +30,9 @@ RUN keep=$([ "$TARGETARCH" = "arm64" ] && echo linux-arm64 || echo linux-x64) \
 COPY tools/ tools/
 RUN dotnet restore tools/${SERVICE_NAME}.SourceSimulator --locked-mode \
  && dotnet publish tools/${SERVICE_NAME}.SourceSimulator -c Release -o /app/publish/simulator --no-restore /p:UseAppHost=false  && mkdir -p /simstate
+COPY test_data_yandex/data.json /app/publish/simulator/organizer/data.json
+# Модель по умолчанию: основной балл — ML; включается, если моделей в БД ещё нет
+COPY tools/Aeza.Risk.Ml/models/fasttree-1500x3650/model-bundle.zip /app/publish/ml/default-model-bundle.zip
 COPY --from=web /web/dist /app/publish/wwwroot
 # В chiseled-образе нет shell, поэтому ссылки на точки входа создаются здесь
 RUN ln -s ${SERVICE_NAME}.Web.dll /app/publish/service.runtime.dll \

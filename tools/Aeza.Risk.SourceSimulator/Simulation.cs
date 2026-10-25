@@ -21,7 +21,7 @@ public sealed partial class Simulation
     private readonly Dictionary<string, PlanConfig> _plans;
     private IEventSink _sink = new ListSink();
     private ITruthSink? _truth;
-    /// <summary>«Истина» до первого хода (профили клиентов при создании мира) — уходит в первый переданный приёмник</summary>
+    /// <summary>«Истина» до первого хода (профили клиентов при создании snapshot системы) — уходит в первый переданный приёмник</summary>
     private readonly List<JsonObject> _pendingTruth = [];
 
     private Simulation(World world, SimConfig config, Rng rng)
@@ -51,9 +51,9 @@ public sealed partial class Simulation
     /// <summary>Запланированных действий</summary>
     public int Pending => _q.Count;
 
-    // ---------- Создание мира ----------
+    // ---------- Создание snapshot системы ----------
 
-    /// <summary>Мир на начало истории T₀: часть клиентов уже есть (стаж до 3 лет), остальные зарегистрируются за период</summary>
+    /// <summary>Snapshot системы на начало истории T₀: часть клиентов уже есть (стаж до 3 лет), остальные зарегистрируются за период</summary>
     public static Simulation CreateHistory(SimConfig config, ulong seed, DateTimeOffset t0)
     {
         config.Validate();
@@ -74,7 +74,7 @@ public sealed partial class Simulation
         return sim;
     }
 
-    /// <summary>Мир из тестовых данных в формате организаторов (accounts / services / transactions) на момент <paramref name="now"/></summary>
+    /// <summary>Snapshot системы из тестовых данных в формате организаторов (accounts / services / transactions) на момент <paramref name="now"/></summary>
     public static Simulation FromSourceData(JsonObject data, SimConfig config, ulong seed, DateTimeOffset now, string sourceHash)
     {
         config.Validate();
@@ -91,7 +91,17 @@ public sealed partial class Simulation
         return sim;
     }
 
-    /// <summary>Мир из файла состояния (переживает перезапуск: та же очередь, те же счётчики и генератор)</summary>
+    /// <summary>Добавить существующих клиентов на момент <paramref name="at"/>; новые id — с 1001 / 10001 / 100001, чтобы не пересечься с тестовыми данными</summary>
+    public void AddExistingCustomers(int count, DateTimeOffset at)
+    {
+        W.NextAccountId = Math.Max(W.NextAccountId, 1001);
+        W.NextServiceId = Math.Max(W.NextServiceId, 10001);
+        W.NextTransactionId = Math.Max(W.NextTransactionId, 100001);
+        at = Iso.Sec(at);
+        for (var i = 0; i < count; i++) CreateExistingCustomer(at);
+    }
+
+    /// <summary>Snapshot системы из файла состояния (переживает перезапуск: та же очередь, те же счётчики и генератор)</summary>
     public static Simulation Load(string json)
     {
         var world = JsonSerializer.Deserialize<World>(json, StateJson) ?? throw new InvalidOperationException("Файл состояния симулятора пуст");
@@ -99,7 +109,7 @@ public sealed partial class Simulation
         return new Simulation(world, world.Config ?? new SimConfig(), Rng.FromState(world.Rng));
     }
 
-    /// <summary>Состояние целиком: мир, очередь, генератор</summary>
+    /// <summary>Состояние целиком: snapshot системы, очередь, генератор</summary>
     public string Save()
     {
         W.Rng = _r.State;
@@ -114,7 +124,7 @@ public sealed partial class Simulation
         }
     }
 
-    private static string RunIdOf(string material) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))[..8];
+    internal static string RunIdOf(string material) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))[..8];
 
     // ---------- Ход времени ----------
 
@@ -454,6 +464,9 @@ public static class Kinds
     public const string Decide = "decide";
     public const string Offer = "offer";
     public const string OfferRedeem = "offer_redeem";
+    public const string BackupDownload = "backup_download";
+    public const string DnsChange = "dns_change";
+    public const string ExitSurvey = "exit_survey";
     public const string Verify = "verify";
     public const string Security = "security";
     public const string Close = "close";

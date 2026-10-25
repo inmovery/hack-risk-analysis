@@ -4,7 +4,7 @@ namespace Aeza.Risk.Core.Generations;
 public sealed record GenerationInfo(
     long Id, long SourceRevision, long ModelRevision, DateTimeOffset AsOf, DateTimeOffset SourceAsOf, bool SourceAsOfAssumed,
     DateTimeOffset PublishedAt, string ClockMode, string EngineVersion, bool Synthetic, long SourceAgeSeconds, int HorizonDays,
-    long SourceSeq, DateTimeOffset SourceUpdatedAt, string SourceKind, long ActivitySeq, long? MlModelId = null);
+    long SourceSeq, DateTimeOffset SourceUpdatedAt, string SourceKind, long ActivitySeq, long? MlModelId = null, string Scoring = ScoringModes.Rules);
 
 public sealed record PendingInfo(long JobId, string Status, string Reason, long? ModelRevision, long? SourceRevision, DateTimeOffset CreatedAt);
 

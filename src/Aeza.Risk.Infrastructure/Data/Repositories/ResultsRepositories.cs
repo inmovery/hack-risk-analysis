@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Aeza.Risk.Core;
 using Aeza.Risk.Core.Abstractions;
 using Aeza.Risk.Core.Entities;
 using Aeza.Risk.Core.Generations;
@@ -29,7 +30,8 @@ public sealed class GenerationReader(AppDbContext db, TimeProvider time) : IGene
         var updated = gen.SourceUpdatedAt is { } u && u > snap.SourceAsOf ? u : snap.SourceAsOf;
         var info = new GenerationInfo(gen.Id, gen.SourceRevision, gen.ModelRevisionId, gen.AsOf, snap.SourceAsOf, snap.SourceAsOfAssumed,
             gen.CreatedAt, gen.ClockMode, gen.EngineVersion, snap.Synthetic || gen.SourceSynthetic, (long)Math.Max(0, (now - updated).TotalSeconds),
-            summary.Money.HorizonDays, gen.SourceSeq, updated, updated > snap.SourceAsOf ? "stream" : "snapshot", gen.ActivitySeq, gen.MlModelId);
+            summary.Money.HorizonDays, gen.SourceSeq, updated, updated > snap.SourceAsOf ? "stream" : "snapshot", gen.ActivitySeq, gen.MlModelId,
+            summary.Scoring?.Used ?? ScoringModes.Rules);
         var pending = await db.RecalcJobs.AsNoTracking().Where(j => j.Status == JobStatus.Pending || j.Status == JobStatus.Running)
             .OrderByDescending(j => j.Id).Select(j => new PendingInfo(j.Id, j.Status, j.Reason, j.ModelRevisionId, null, j.CreatedAt))
             .FirstOrDefaultAsync(cancellationToken);

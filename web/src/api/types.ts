@@ -3,6 +3,12 @@
 export type RiskLevel = 'high' | 'medium' | 'low' | 'unknown';
 export type ScoreState = 'complete' | 'partial' | 'no_renewable_services' | 'insufficient_data';
 
+/** Чем считается основной балл: rules — правила, ml — только ML-модель */
+export type ScoringMode = 'rules' | 'ml';
+/** Чем посчитано поколение; fallback — почему выбран ML, а посчитано правилами */
+export interface ScoringInfo {
+  requested: ScoringMode; used: ScoringMode; modelId: number | null; modelVersion: string | null; fallback: 'no_model' | 'ml_failed' | null;
+}
 export interface GenerationInfo {
   id: number; sourceRevision: number; modelRevision: number; asOf: string; sourceAsOf: string; sourceAsOfAssumed: boolean;
   publishedAt: string; clockMode: 'live' | 'source'; engineVersion: string; synthetic: boolean; sourceAgeSeconds: number; horizonDays: number;
@@ -10,8 +16,10 @@ export interface GenerationInfo {
   sourceSeq: number; sourceUpdatedAt: string; sourceKind: 'snapshot' | 'stream';
   /** Последнее доменное событие, учтённое в активности клиентов */
   activitySeq: number;
-  /** Теневая ML-модель поколения; не влияет на баллы */
+  /** ML-модель поколения: в тени или основной балл (см. scoring) */
   mlModelId?: number | null;
+  /** Чем посчитан основной балл этого поколения */
+  scoring?: ScoringMode;
 }
 export interface PendingInfo { jobId: number; status: string; reason: string; modelRevision: number | null; sourceRevision: number | null; createdAt: string; }
 export interface LastFailureInfo { jobId: number; errorCode: string | null; finishedAt: string | null; modelRevision: number | null; sourceRevision: number | null; }
@@ -64,8 +72,12 @@ export interface CustomerDetail {
 }
 export interface MlShadowDetail {
   modelId: number; modelVersion: string; state: 'scored' | 'out_of_scope' | 'failed'; probability: number | null; serviceId: number | null;
-  services: { serviceId: number; probability: number; daysToExpiry: number; rulesScore: number | null }[];
+  services: { serviceId: number; probability: number; daysToExpiry: number; rulesScore: number | null; drivers?: MlDriver[] | null }[];
+  /** treeshap — точные вклады деревьев, occlusion — сравнение с типичным клиентом */
+  explain?: 'treeshap' | 'occlusion' | null;
 }
+/** Вклад фактора в прогноз: насколько вероятность выше, чем при этом факторе как у типичного клиента */
+export interface MlDriver { key: string; title: string; delta: number; text: string; }
 export interface CustomerDetailResponse { generation: GenerationInfo; pending: PendingInfo | null; detail: CustomerDetail; }
 
 export interface LevelMoney { customers: number; plannedRenewalsMinor: number; unfundedMinor: number; atRiskMinor: number; }
@@ -73,7 +85,12 @@ export interface SummaryResponse {
   generation: GenerationInfo; pending: PendingInfo | null; lastFailure: LastFailureInfo | null;
   customers: { total: number; byLevel: Record<RiskLevel, number>; byState: Record<ScoreState, number>; scored: number; scoreSum: number };
   services: { total: number; renewable: number; scored: number; unscored: number; unschedulable: number; byStatus: Record<string, number> };
-  money: { horizonDays: number; plannedRenewalsMinor: number; unfundedMinor: number; atRiskMinor: number; unscoredPlannedMinor: number; unfundedUnknownPlannedMinor: number; byLevel: Record<RiskLevel, LevelMoney> };
+  money: {
+    horizonDays: number; plannedRenewalsMinor: number; unfundedMinor: number; atRiskMinor: number; unscoredPlannedMinor: number; unfundedUnknownPlannedMinor: number;
+    byLevel: Record<RiskLevel, LevelMoney>;
+    /** 90 % интервал выручки под риском — только когда балл считает ML (балл — вероятность) */
+    atRiskInterval?: { expectedMinor: number; lowMinor: number; highMinor: number; level: number; items: number } | null;
+  };
   qualityFlags: Record<string, number>;
   topAtRisk: { id: number; email: string; riskScore: number | null; riskLevel: RiskLevel; atRiskMinor: number; primaryReasonText: string }[];
   forecast: { date: string; plannedMinor: number; atRiskMinor: number; renewals: number }[];
@@ -192,4 +209,40 @@ export interface MlStatus {
   status: 'not_trained' | 'shadow'; reason: string; target: string; nextStep: string;
   labels: { renewed: number; notRenewed: number; pending: number; requiredPerClass: number; ready: boolean; runtime: string };
   shadow?: MlShadowStatus | null;
+  /** Выбранный режим основного балла и чем посчитано активное поколение */
+  scoring?: { primary: ScoringMode; generation: ScoringInfo | null } | null;
+}
+
+export type SimulationPhase = 'idle' | 'bootstrap' | 'history' | 'live' | 'paused' | 'error';
+export type WorldSource = 'organizer' | 'generated';
+export interface WorldSettings {
+  source: WorldSource; seed: number; extraCustomers: number; customers: number; historyDays: number;
+}
+export interface SimulationSettings {
+  running: boolean; tickSeconds: number; scenarioStepSeconds: number; chaos: boolean; world: WorldSettings;
+}
+export interface SimulationAgentStatus {
+  agentVersion: string; worldRevision: number; runId: string | null; phase: SimulationPhase; simClock: string | null;
+  customers: number; services: number; liveServices: number; eventsGenerated: number; eventsSent: number; backlog: number;
+  lastSentAt: string | null; lastError: string | null; lastNarration: string | null; scenarioHandled: number;
+}
+export interface SimulationView {
+  eventsOnly: boolean; settings: SimulationSettings; revision: number; updatedAt: string; updatedBy: string | null;
+  world: { revision: number; startedAt: string; settings: WorldSettings; resetAt: string | null; resetBy: string | null };
+  scenarioRequest: number;
+  agent: { online: boolean; reportedAt: string | null; status: SimulationAgentStatus | null };
+  pending: { worldChanged: boolean };
+}
+
+/** Конструктор событий: тип, поля формы, варианты */
+export interface ComposerOption { value: string; label: string }
+export interface ComposerField {
+  name: string; label: string; kind: 'money' | 'number' | 'enum' | 'bool';
+  options?: ComposerOption[] | null; min?: number | null; max?: number | null; default?: unknown;
+}
+export interface ComposerEventType { type: string; title: string; description: string; needsService: boolean; fields: ComposerField[] }
+export type ComposedStatus = 'pending' | 'applied' | 'rejected';
+export interface ComposedEvent {
+  id: number; createdAt: string; createdBy: string; type: string; accountId: number; serviceId?: number | null;
+  data: Record<string, unknown>; status: ComposedStatus; eventIds: string[]; message?: string | null; updatedAt?: string | null;
 }

@@ -37,6 +37,11 @@ public sealed class SourceIngestion(
         await db.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({WriteLockKey})", ct);
         var now = time.GetUtcNow();
         var grace = await GraceDaysAsync(db, ct);
+        if (meta.SimulationWorld is { } world)
+        {
+            var current = await db.SimulationState.AsNoTracking().Where(s => s.Id == 1).Select(s => (long?)s.WorldRevision).SingleOrDefaultAsync(ct);
+            if (current != world) throw new SimulationWorldChangedException(current);
+        }
         var appState = await db.AppState.FromSqlRaw("SELECT * FROM app_state WHERE id = 1 FOR UPDATE").SingleAsync(ct);
         // v2 с occurredAt не позже даты базы уже учтено в тестовых данных: не применяем, как и при переигрывании после замены снимка
         var baseAsOf = appState.LatestSourceSnapshotId is { } baseId
@@ -288,7 +293,9 @@ UPDATE source_imports SET chunks_done = chunks_done + 1, applied = applied + {1}
             ["top_ups_count"] = kv.Value.TopUpsCount, ["top_ups_minor"] = kv.Value.TopUpsMinor, ["downgrades"] = kv.Value.Downgrades,
             ["upgrades"] = kv.Value.Upgrades, ["auto_prolong_off"] = kv.Value.AutoProlongOff, ["suspends"] = kv.Value.Suspends,
             ["withdrawals_minor"] = kv.Value.WithdrawalsMinor, ["backups"] = kv.Value.Backups, ["renewals"] = kv.Value.Renewals,
-            ["deletions"] = kv.Value.Deletions, ["bonus_expired"] = kv.Value.BonusExpired, ["events"] = kv.Value.Events,
+            ["deletions"] = kv.Value.Deletions, ["bonus_expired"] = kv.Value.BonusExpired, ["backup_downloads"] = kv.Value.BackupDownloads,
+            ["dns_external"] = kv.Value.DnsExternal, ["retention_offers"] = kv.Value.RetentionOffers, ["retention_holdouts"] = kv.Value.RetentionHoldouts,
+            ["events"] = kv.Value.Events,
         }).ToList();
         await db.Database.ExecuteSqlRawAsync(ActivityUpsertSql,
             [new NpgsqlParameter("rows", NpgsqlDbType.Jsonb) { Value = AppJson.Serialize(rows) }, new NpgsqlParameter("now", now)], ct);
@@ -297,14 +304,17 @@ UPDATE source_imports SET chunks_done = chunks_done + 1, applied = applied + {1}
     private const string ActivityUpsertSql = @"
 INSERT INTO customer_activity_daily (account_id, day, logins, logins_failed, usage_samples, cpu_sum, traffic_out_gb, incident_minutes,
   tickets_opened, tickets_unsolved, csat_min, nps_min, payments_count, payments_minor, payments_failed, top_ups_count, top_ups_minor,
-  downgrades, upgrades, auto_prolong_off, suspends, withdrawals_minor, backups, renewals, deletions, bonus_expired, events, updated_at)
+  downgrades, upgrades, auto_prolong_off, suspends, withdrawals_minor, backups, renewals, deletions, bonus_expired,
+  backup_downloads, dns_external, retention_offers, retention_holdouts, events, updated_at)
 SELECT r.account_id, r.day, r.logins, r.logins_failed, r.usage_samples, r.cpu_sum, r.traffic_out_gb, r.incident_minutes,
   r.tickets_opened, r.tickets_unsolved, r.csat_min, r.nps_min, r.payments_count, r.payments_minor, r.payments_failed, r.top_ups_count, r.top_ups_minor,
-  r.downgrades, r.upgrades, r.auto_prolong_off, r.suspends, r.withdrawals_minor, r.backups, r.renewals, r.deletions, r.bonus_expired, r.events, @now
+  r.downgrades, r.upgrades, r.auto_prolong_off, r.suspends, r.withdrawals_minor, r.backups, r.renewals, r.deletions, r.bonus_expired,
+  r.backup_downloads, r.dns_external, r.retention_offers, r.retention_holdouts, r.events, @now
 FROM jsonb_to_recordset(@rows) AS r(account_id bigint, day date, logins int, logins_failed int, usage_samples int, cpu_sum double precision,
   traffic_out_gb double precision, incident_minutes int, tickets_opened int, tickets_unsolved int, csat_min int, nps_min int, payments_count int,
   payments_minor bigint, payments_failed int, top_ups_count int, top_ups_minor bigint, downgrades int, upgrades int, auto_prolong_off int,
-  suspends int, withdrawals_minor bigint, backups int, renewals int, deletions int, bonus_expired int, events int)
+  suspends int, withdrawals_minor bigint, backups int, renewals int, deletions int, bonus_expired int,
+  backup_downloads int, dns_external int, retention_offers int, retention_holdouts int, events int)
 ON CONFLICT (account_id, day) DO UPDATE SET
   logins = customer_activity_daily.logins + excluded.logins,
   logins_failed = customer_activity_daily.logins_failed + excluded.logins_failed,
@@ -330,6 +340,10 @@ ON CONFLICT (account_id, day) DO UPDATE SET
   renewals = customer_activity_daily.renewals + excluded.renewals,
   deletions = customer_activity_daily.deletions + excluded.deletions,
   bonus_expired = customer_activity_daily.bonus_expired + excluded.bonus_expired,
+  backup_downloads = customer_activity_daily.backup_downloads + excluded.backup_downloads,
+  dns_external = customer_activity_daily.dns_external + excluded.dns_external,
+  retention_offers = customer_activity_daily.retention_offers + excluded.retention_offers,
+  retention_holdouts = customer_activity_daily.retention_holdouts + excluded.retention_holdouts,
   events = customer_activity_daily.events + excluded.events,
   updated_at = excluded.updated_at";
 
