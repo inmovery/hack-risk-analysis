@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing"/>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational"/>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing"/>
+    <PackageReference Include="FluentAssertions"/>
+    <PackageReference Include="Testcontainers.PostgreSql"/>
+    <PackageReference Include="xunit.v3"/>
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Feature\Aeza.Risk.Feature.csproj"/>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Infrastructure\Aeza.Risk.Infrastructure.csproj"/>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Web\Aeza.Risk.Web.csproj"/>
+    <!-- Сквозная доставка симулятор → анализатор -->
+    <ProjectReference Include="..\..\tools\Aeza.Risk.SourceSimulator\Aeza.Risk.SourceSimulator.csproj"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\test_data_yandex\data.json" Link="organizer\data.json" CopyToOutputDirectory="PreserveNewest"/>
+    <!-- Теневая ML-модель для тестов: логистическая регрессия на синтетике (tools/Aeza.Risk.Ml) -->
+    <Content Include="Fixtures\ml\model-bundle.zip" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+PostgreSQL {{ .Chart.AppVersion }} ({{ if eq .Values.mode "cnpg" }}CloudNativePG, {{ .Values.cnpg.instances }} экз.{{ else }}один экземпляр{{ end }}): {{ include "aeza-postgres.rwHost" . }}.{{ .Release.Namespace }}.svc:5432, база {{ .Values.cluster.database }}.
+{{- if eq .Values.mode "cnpg" }}
+Состояние: kubectl -n {{ .Release.Namespace }} get cluster {{ include "aeza-postgres.fullname" . }}
+{{- else }}
+Состояние: kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name=aeza-postgres
+{{- end }}
+{{- if .Values.public.enabled }}
+Снаружи: порт {{ .Values.public.port }} рабочего узла (Service {{ include "aeza-postgres.fullname" . }}-public), только TLS{{ with .Values.public.sourceRanges }}, с адресов {{ join ", " . }}{{ else }}, со всех адресов{{ end }}.
+Внутри кластера подключаются поды с меткой {{ toYaml .Values.networkPolicy.clientLabel | trim }}; все TCP-подключения — по TLS.
+{{- else }}
+Подключаются только поды с меткой {{ toYaml .Values.networkPolicy.clientLabel | trim }}.
+{{- end }}
+{{- if .Values.backup.enabled }}
+Бэкапы: PVC {{ .Values.backup.claimName }}{{ if .Values.backup.scheduled }}, CronJob {{ include "aeza-postgres.fullname" . }}-backup ({{ .Values.backup.schedule }}), хранение {{ .Values.backup.retentionDays }} дн.{{ else }} (дампы перед выкладкой; ежедневный бэкап выключен){{ end }}.
+{{- end }}

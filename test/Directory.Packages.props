@@ -1,0 +1,30 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+        <NoWarn>$(NoWarn);NU1507</NoWarn>
+        <MicrosoftPackageVersion>10.0.13</MicrosoftPackageVersion>
+        <TestContainersPackageVersion>4.16.0</TestContainersPackageVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
+        <PackageVersion Include="JetBrains.Annotations" Version="2025.2.4"/>
+        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0"/>
+        <PackageVersion Include="Moq" Version="4.20.72"/>
+        <!-- FluentAssertions 8.x платный: не поднимать выше 7.x -->
+        <PackageVersion Include="FluentAssertions" Version="7.2.2"/>
+        <PackageVersion Include="AutoFixture" Version="4.18.1"/>
+        <PackageVersion Include="AutoFixture.AutoMoq" Version="4.18.1"/>
+        <PackageVersion Include="FluentValidation" Version="12.1.1"/>
+        <PackageVersion Include="Testcontainers.PostgreSql" Version="$(TestContainersPackageVersion)"/>
+        <PackageVersion Include="xunit.v3" Version="4.0.2"/>
+        <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageVersion>
+    </ItemGroup>
+</Project>

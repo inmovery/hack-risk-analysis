@@ -1,0 +1,11 @@
+Prometheus снимает: {{ join ", " .Values.prometheus.targets }} (интервал {{ .Values.prometheus.scrapeInterval }}, хранение {{ .Values.prometheus.retention }}).
+{{- if .Values.grafana.ingress.enabled }}
+Grafana: https://{{ .Values.grafana.ingress.host }}{{ with .Values.grafana.publicPort }}:{{ . }}{{ end }} (логин {{ .Values.grafana.adminUser }}, пароль — ключ grafana-admin-password в Secret {{ .Values.existingSecret }})
+{{- else }}
+Grafana: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aeza-monitoring.fullname" . }}-grafana 3000
+{{- end }}
+{{- if .Values.prometheus.ingress.enabled }}
+Prometheus: https://{{ .Values.prometheus.ingress.host }} (basic auth)
+{{- else }}
+Prometheus: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aeza-monitoring.fullname" . }}-prometheus 9090
+{{- end }}

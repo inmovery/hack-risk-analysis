@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aeza.Risk.SharedKernel/Aeza.Risk.SharedKernel.csproj" />
+    <Project Path="src/Aeza.Risk.Core/Aeza.Risk.Core.csproj" />
+    <Project Path="src/Aeza.Risk.Feature/Aeza.Risk.Feature.csproj" />
+    <Project Path="src/Aeza.Risk.Infrastructure/Aeza.Risk.Infrastructure.csproj" />
+    <Project Path="src/Aeza.Risk.Web/Aeza.Risk.Web.csproj" />
+    <Project Path="src/Aeza.Risk.Migrator/Aeza.Risk.Migrator.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Aeza.Risk.UnitTests/Aeza.Risk.UnitTests.csproj" />
+    <Project Path="test/Aeza.Risk.IntegrationTests/Aeza.Risk.IntegrationTests.csproj" />
+    <Project Path="test/Aeza.Risk.SourceSimulator.Tests/Aeza.Risk.SourceSimulator.Tests.csproj" />
+    <Project Path="test/Aeza.Risk.Ml.Tests/Aeza.Risk.Ml.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Aeza.Risk.SourceSimulator/Aeza.Risk.SourceSimulator.csproj" />
+    <Project Path="tools/Aeza.Risk.Ml/Aeza.Risk.Ml.csproj" />
+  </Folder>
+</Solution>

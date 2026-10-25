@@ -1,0 +1,40 @@
+{{- if .Values.public.enabled }}
+{{- if ne .Values.mode "single" }}
+{{- fail "public.enabled поддерживается только в mode: single (в CloudNativePG доступ снаружи — через его Pooler/сервисы)" }}
+{{- end }}
+# Доступ к PostgreSQL снаружи кластера: любое TCP-подключение — только по TLS.
+# Локальный сокет и loopback пода — без пароля (пробы, перечитывание сертификата).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}-hba
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+data:
+  pg_hba.conf: |
+    local   all  all                 trust
+    host    all  all  127.0.0.1/32   trust
+    host    all  all  ::1/128        trust
+    hostssl all  all  0.0.0.0/0      scram-sha-256
+    hostssl all  all  ::/0           scram-sha-256
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}-public
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: public
+spec:
+  type: LoadBalancer
+  selector:
+    {{- include "aeza-postgres.selectorLabels" . | nindent 4 }}
+  {{- with .Values.public.sourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  ports:
+    - name: postgres
+      port: {{ .Values.public.port }}
+      targetPort: postgres
+{{- end }}

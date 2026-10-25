@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana-provisioning
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ include "aeza-monitoring.fullname" . }}-prometheus:9090
+        isDefault: true
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: aeza
+        folder: Aeza
+        type: file
+        options:
+          path: /etc/grafana/dashboards
+---
+# Дашборд — копия deploy/grafana/dashboards/aeza-risk.json (Compose)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana-dashboards
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  aeza-risk.json: |-
+    {{- .Files.Get "dashboards/aeza-risk.json" | nindent 4 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.grafana.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.grafana.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "aeza-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      labels:
+        {{- include "aeza-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+      annotations:
+        checksum/dashboards: {{ .Files.Get "dashboards/aeza-risk.json" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        runAsNonRoot: true
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.grafana.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: grafana
+          image: "{{ .Values.grafana.image.repository }}:{{ .Values.grafana.image.tag }}"
+          imagePullPolicy: {{ .Values.grafana.image.pullPolicy }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.adminUser | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: grafana-admin-password
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+            - name: GF_PATHS_PROVISIONING
+              value: /etc/grafana/provisioning
+            # Корневая ФС только для чтения: логи в stdout, не в /var/log/grafana
+            - name: GF_LOG_MODE
+              value: console
+            # Без обновления плагинов при старте: с ФС только для чтения Grafana теряет источник данных
+            - name: GF_PLUGINS_PREINSTALL_DISABLED
+              value: "true"
+            {{- if .Values.grafana.ingress.enabled }}
+            - name: GF_SERVER_ROOT_URL
+              value: "https://{{ .Values.grafana.ingress.host }}{{ with .Values.grafana.publicPort }}:{{ . }}{{ end }}"
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+          # Первый старт — долгие миграции базы Grafana: liveness проверяется после них
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.grafana.resources | nindent 12 }}
+          securityContext:
+            {{- include "aeza-monitoring.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yml
+              subPath: datasources.yml
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
+              subPath: dashboards.yml
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "aeza-monitoring.fullname" . }}-grafana
+        - name: provisioning
+          configMap:
+            name: {{ include "aeza-monitoring.fullname" . }}-grafana-provisioning
+        - name: dashboards
+          configMap:
+            name: {{ include "aeza-monitoring.fullname" . }}-grafana-dashboards
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  selector:
+    {{- include "aeza-monitoring.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

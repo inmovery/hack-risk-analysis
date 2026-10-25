@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Aeza.Risk.SharedKernel\Aeza.Risk.SharedKernel.csproj"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="JetBrains.Annotations"/>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aeza.Risk.UnitTests"/>
+  </ItemGroup>
+</Project>

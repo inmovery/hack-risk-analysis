@@ -1,0 +1,300 @@
+{
+  "title": "Aeza Risk — бизнес-показатели",
+  "uid": "aeza-risk",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "description": "Только бизнес-метрики сервиса (OpenTelemetry, /metrics без авторизации). Значения читаются из активного поколения и одинаковы на всех репликах — агрегация через max. Ряд Prometheus — история рассчитанных оценок, а не история фактического оттока (факты — aeza_expiry_outcomes и журнал в панели).",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Выручка под риском, €",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_money_at_risk_euros)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      },
+      "description": "Σ плановых продлений × score/100 на горизонте. Индекс, не вероятность."
+    },
+    {
+      "type": "stat",
+      "title": "Плановые продления, €",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_money_planned_renewals_euros)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Не покрыто балансом, €",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_money_unfunded_euros)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Возраст данных источника, ч",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_source_age_seconds) / 3600",
+          "refId": "A"
+        }
+      ],
+      "description": "С последнего события потока или снимка."
+    },
+    {
+      "type": "timeseries",
+      "title": "Клиенты по уровню риска непродления",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max by (risk_level) (aeza_customers)",
+          "legendFormat": "{{risk_level}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Типы оттока: уход целиком и снижение платежей",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_customers_full_churn{risk_level=\"high\"})",
+          "legendFormat": "уход целиком: high",
+          "refId": "A"
+        },
+        {
+          "expr": "max(aeza_customers_full_churn_by_state{state=\"churned\"})",
+          "legendFormat": "уже ушли",
+          "refId": "B"
+        },
+        {
+          "expr": "max(aeza_customers_payment_trend{trend=\"decline\"})",
+          "legendFormat": "снижение платежей",
+          "refId": "C"
+        },
+        {
+          "expr": "max(aeza_customers_payment_trend{trend=\"insufficient_history\"})",
+          "legendFormat": "мало истории платежей",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Исходы сроков (факт из журнала)",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max by (outcome) (aeza_expiry_outcomes)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Непродление за N дней фиксируется только при свежем источнике."
+    },
+    {
+      "type": "timeseries",
+      "title": "Выручка под риском по уровням, €",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max by (risk_level) (aeza_money_at_risk_by_level_euros)",
+          "legendFormat": "{{risk_level}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Средний score оценённых клиентов",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_risk_score_sum) / max(aeza_risk_scored_customers)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Клиентов в расчёте",
+      "gridPos": {
+        "x": 6,
+        "y": 22,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_customers_count)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Номер расчёта (поколение)",
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_generation)",
+          "refId": "A"
+        }
+      ],
+      "description": "Совпадает с заголовком X-Risk-Generation и номером в панели."
+    },
+    {
+      "type": "stat",
+      "title": "Горизонт, дни",
+      "gridPos": {
+        "x": 18,
+        "y": 22,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(aeza_horizon_days)",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

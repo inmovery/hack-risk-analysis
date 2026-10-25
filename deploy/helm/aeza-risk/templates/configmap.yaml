@@ -1,0 +1,46 @@
+# Несекретная конфигурация сервиса; секреты — из existingSecret
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-app
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+data:
+  ENV_Auth__SecureCookies: {{ .Values.app.secureCookies | quote }}
+  # X-Forwarded-* принимаются только от Ingress-контроллера из сетей кластера
+  ENV_Proxy__Enabled: "true"
+  ENV_Proxy__ForwardLimit: "1"
+  # Панель отдаёт отдельный под (nginx); сервис — только API
+  ENV_Spa__Enabled: "false"
+  ENV_Docs__RequireAuth: {{ .Values.app.docsRequireAuth | quote }}
+  {{- /* CORS нужен только раздельным хостам: при одном адресе панель и API — один origin */}}
+  {{- $origins := .Values.app.corsOrigins }}
+  {{- if and (not $origins) (not (include "aeza-risk.single" .)) }}
+  {{- $origins = list (printf "https://%s%s" (include "aeza-risk.frontHost" .) (include "aeza-risk.publicSuffix" .)) }}
+  {{- end }}
+  {{- range $i, $o := $origins }}
+  ENV_CorsOrigins__{{ $i }}: {{ $o | quote }}
+  {{- end }}
+  {{- if .Values.seed.data }}
+  ENV_Seed__File: /seed/data.json
+  ENV_Seed__SourceAsOf: {{ .Values.seed.sourceAsOf | quote }}
+  ENV_Seed__Label: {{ .Values.seed.label | quote }}
+  {{- end }}
+  {{- range $k, $v := .Values.app.extraEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+{{- if .Values.seed.data }}
+---
+# Тестовые данные — только для первичного импорта в пустую БД
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-seed
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+data:
+  data.json: |-
+    {{- .Values.seed.data | nindent 4 }}
+{{- end }}

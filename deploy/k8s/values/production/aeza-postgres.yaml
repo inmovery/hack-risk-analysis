@@ -1,0 +1,17 @@
+# Продакшен: один экземпляр PostgreSQL на рабочем узле; дампы — перед каждой выкладкой.
+mode: single
+# Доступ снаружи: порт 5432, только TLS, сертификат адреса продукта
+public:
+  enabled: true
+  tlsSecretName: aeza-tls
+cluster:
+  nodeSelector:
+    aeza/worker: "true"
+  storage:
+    size: 20Gi
+backup:
+  scheduled: false
+  nodeSelector:
+    aeza/worker: "true"
+  persistence:
+    size: 10Gi

@@ -1,0 +1,14 @@
+# В контекст сборки — только то, что копирует Dockerfile
+*
+!global.json
+!nuget.config
+!src/
+!tools/
+!web/
+**/bin/
+**/obj/
+**/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/e2e/.auth/

@@ -1,0 +1,16 @@
+# Продакшен: один адрес продукта (панель, API, Swagger), www → перенаправление.
+# Образы, теги и адреса подставляет CI.
+app:
+  replicas: 2
+  nodeSelector:
+    aeza/worker: "true"
+front:
+  replicas: 2
+  nodeSelector:
+    aeza/worker: "true"
+ingress:
+  mode: single
+  clusterIssuer: letsencrypt
+hooks:
+  backupNodeSelector:
+    aeza/worker: "true"

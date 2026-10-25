@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+    <!-- Симулятор системы-источника: синтетические клиенты, история и live -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Aeza.Risk.SourceSimulator</RootNamespace>
+        <AssemblyName>Aeza.Risk.SourceSimulator</AssemblyName>
+        <StartupObject>Aeza.Risk.SourceSimulator.SimulatorApp</StartupObject>
+    </PropertyGroup>
+</Project>

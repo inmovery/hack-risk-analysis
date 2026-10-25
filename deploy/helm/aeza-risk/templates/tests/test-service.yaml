@@ -1,0 +1,60 @@
+# helm test: готовность, закрытость данных, /metrics
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-test
+  labels:
+    {{- include "aeza-risk.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  securityContext:
+    runAsUser: 100
+    runAsGroup: 101
+    {{- include "aeza-risk.podSecurity" . | nindent 4 }}
+  containers:
+    - name: check
+      image: {{ .Values.tests.image }}
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          APP="http://{{ include "aeza-risk.fullname" . }}-app:5000"
+          code() { curl -s -m 5 -o /dev/null -w '%{http_code}' "$@"; }
+          # Сетевой контроллер k3s (kube-router) применяет NetworkPolicy к новому поду через несколько секунд
+          for i in $(seq 1 30); do [ "$(code "$APP/health/ready")" = 200 ] && break; sleep 2; done
+          [ "$(code "$APP/health/ready")" = 200 ] && echo "PASS health/ready" || { echo "FAIL health/ready"; exit 1; }
+          [ "$(code "$APP/api/v1/customers")" = 401 ] && echo "PASS customers без входа → 401" || { echo "FAIL customers без входа"; exit 1; }
+          MC=$(curl -s -m 10 -D /tmp/h -o /tmp/m -w '%{http_code}' "$APP/metrics")
+          [ "$MC" = 200 ] && echo "PASS /metrics без входа → 200" || { echo "FAIL /metrics → $MC"; exit 1; }
+          if grep -qi '^x-risk-generation: [0-9]' /tmp/h; then
+            echo "PASS /metrics: X-Risk-Generation"
+            grep -q '^aeza_customers_count' /tmp/m && echo "PASS /metrics: бизнес-показатели" || { echo "FAIL /metrics без aeza_customers_count"; exit 1; }
+          else
+            # Пустая база (данные ещё не загружены): поколения нет — значений нет (unknown, а не 0)
+            if grep -q '^aeza_customers_count' /tmp/m; then echo "FAIL значения /metrics без поколения"; exit 1; fi
+            echo "PASS /metrics: поколения ещё нет (база пуста) — значений нет"
+          fi
+          if grep -Eq '^(process_|dotnet_|http_|aspnetcore_|kestrel_)' /tmp/m; then echo "FAIL системные метрики в /metrics"; exit 1; fi
+          echo "PASS /metrics: системных метрик нет"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}

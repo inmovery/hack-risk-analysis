@@ -1,0 +1,32 @@
+{{- /* При обслуживании узла (drain) хотя бы одна реплика сервиса и панели остаётся в работе */ -}}
+{{- if gt (int .Values.app.replicas) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-app
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+{{- end }}
+{{- if and .Values.front.enabled (gt (int .Values.front.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-front
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: front
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: front
+{{- end }}

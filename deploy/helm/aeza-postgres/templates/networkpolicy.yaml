@@ -1,0 +1,48 @@
+{{- if .Values.networkPolicy.enabled }}
+# К базе — только клиенты с меткой; в режиме cnpg ещё экземпляры между собой и оператор
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- if eq .Values.mode "cnpg" }}
+      cnpg.io/cluster: {{ include "aeza-postgres.fullname" . }}
+      {{- else }}
+      {{- include "aeza-postgres.selectorLabels" . | nindent 6 }}
+      {{- end }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.clientLabel | nindent 14 }}
+        {{- if eq .Values.mode "cnpg" }}
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: {{ include "aeza-postgres.fullname" . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- if .Values.public.enabled }}
+    # Доступ снаружи: ServiceLB подменяет адрес клиента, защита — TLS, пароль и public.sourceRanges
+    - ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+    {{- if eq .Values.mode "cnpg" }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.operatorNamespace }}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+{{- end }}

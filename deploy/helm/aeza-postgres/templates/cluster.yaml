@@ -1,0 +1,60 @@
+{{- if eq .Values.mode "cnpg" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ .Values.cnpg.instances }}
+  imageName: {{ .Values.cnpg.imageName }}
+  # Обновление: сначала реплики, затем switchover
+  primaryUpdateStrategy: unsupervised
+  # Остановка primary: ожидание клиентов до smartShutdownTimeout, затем переключение на реплику
+  smartShutdownTimeout: {{ .Values.cnpg.smartShutdownTimeout }}
+  switchoverDelay: {{ .Values.cnpg.switchoverDelay }}
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: {{ .Values.cluster.database }}
+      owner: {{ .Values.cluster.owner }}
+      secret:
+        name: {{ required "cluster.ownerSecret обязателен" .Values.cluster.ownerSecret }}
+      # Migrator создаёт DML-роль сервиса: нужно право CREATEROLE
+      postInitApplicationSQL:
+        - ALTER ROLE {{ .Values.cluster.owner }} CREATEROLE
+  postgresql:
+    parameters:
+      {{- range $k, $v := .Values.cluster.parameters }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+    {{- if .Values.cnpg.synchronous }}
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: preferred
+    {{- end }}
+  storage:
+    {{- with .Values.cluster.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+    size: {{ .Values.cluster.storage.size }}
+  resources:
+    {{- toYaml .Values.cluster.resources | nindent 4 }}
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: {{ .Values.cnpg.podAntiAffinityType }}
+    {{- with .Values.cluster.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/part-of: aeza-risk
+{{- end }}

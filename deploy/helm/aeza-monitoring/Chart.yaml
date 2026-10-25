@@ -1,0 +1,7 @@
+apiVersion: v2
+name: aeza-monitoring
+description: >-
+  Prometheus и Grafana для бизнес-метрик Aeza Risk Analyzer (только /metrics сервиса).
+type: application
+version: 0.1.2
+appVersion: "3.15.1"

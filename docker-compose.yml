@@ -1,0 +1,134 @@
+# Серверный вариант: docker compose up -d (секреты — в .env по .env.example).
+# Профили: tls — nginx + Let's Encrypt; observability — Prometheus и Grafana.
+name: aeza-risk
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: aeza
+      POSTGRES_USER: aeza
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeza -d aeza"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Миграции и роль приложения aeza_app (только DML)
+  migrator:
+    image: aeza-risk-app:${APP_VERSION:-local}
+    build:
+      context: .
+      args:
+        BUILD_VERSION: ${APP_VERSION:-local}
+    entrypoint: ["dotnet", "/app/service.migrator.dll"]
+    environment:
+      ENV_App__DbConnectionString: Host=db;Database=aeza;Username=aeza;Password=${POSTGRES_PASSWORD}
+      ENV_App__AppDbUser: aeza_app
+      ENV_App__AppDbPassword: ${APP_DB_PASSWORD:?Задайте APP_DB_PASSWORD в .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: aeza-risk-app:${APP_VERSION:-local}
+    # Образ собирает сервис migrator
+    pull_policy: never
+    environment:
+      ENV_App__DbConnectionString: Host=db;Database=aeza;Username=aeza_app;Password=${APP_DB_PASSWORD}
+      ENV_Auth__AdminLogin: ${BOOTSTRAP_ADMIN_LOGIN:?Задайте BOOTSTRAP_ADMIN_LOGIN в .env}
+      ENV_Auth__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?Задайте BOOTSTRAP_ADMIN_PASSWORD в .env (не короче 12 символов)}
+      ENV_Auth__AnalystLogin: ${BOOTSTRAP_ANALYST_LOGIN:-}
+      ENV_Auth__AnalystPassword: ${BOOTSTRAP_ANALYST_PASSWORD:-}
+      ENV_Auth__IngestToken: ${INGEST_TOKEN:-}
+      ENV_Auth__SecureCookies: ${SECURE_COOKIES:-false}
+      ENV_Proxy__Enabled: ${BEHIND_PROXY:-false}
+      ENV_CorsOrigins__0: ${CORS_ORIGIN:-}
+      ENV_Spa__Enabled: ${SPA_ENABLED:-true}
+      ENV_Docs__RequireAuth: ${DOCS_REQUIRE_AUTH:-false}
+      # Тестовые данные загружаются только в пустую БД
+      ENV_Seed__File: /seed/data.json
+      ENV_Seed__SourceAsOf: "2026-10-19T15:00:00Z"
+      ENV_Seed__Label: organizer:test_data_yandex
+    volumes:
+      - ./test_data_yandex/data.json:/seed/data.json:ro
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:5000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  nginx:
+    profiles: ["tls"]
+    image: nginx:1.29-alpine
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      CERT_NAME: aeza
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/templates/api-http.conf.template:/etc/nginx/templates/api-http.conf.template:ro
+      - ./deploy/nginx/templates/api-https.conf.template:/etc/nginx/templates/api-https.conf.template:ro
+      - ./deploy/nginx/40-certificates.sh:/docker-entrypoint.d/40-certificates.sh:ro
+      - letsencrypt:/etc/letsencrypt
+      - acme:/var/www/certbot
+    # nginx нужен для выпуска сертификата ещё до готовности сервиса
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+
+  # Выпуск и продление сертификатов: docker compose run --rm certbot ...
+  certbot:
+    profiles: ["certbot"]
+    image: certbot/certbot:v5.8.0
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - acme:/var/www/certbot
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.15.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Задайте GRAFANA_ADMIN_PASSWORD в .env для профиля observability}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Плагины — только из образа, без обновления при старте
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:
+  letsencrypt:
+  acme:

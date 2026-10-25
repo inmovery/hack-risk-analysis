@@ -1,0 +1,169 @@
+# Локальный стенд: docker compose -f docker-compose.local.yaml up --build -d
+# Панель http://localhost:8080, Swagger http://localhost:8081/api/v1/docs, Prometheus :9090, Grafana :3000.
+# Симулятор источника: --profile demo up -d source-sim (SIM_MODE=live | scenario).
+name: aeza-local
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: aeza
+      POSTGRES_USER: aeza
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeza -d aeza"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Миграции и роль приложения aeza_app (только DML)
+  migrator:
+    image: aeza-risk-app:local
+    build: .
+    entrypoint: ["dotnet", "/app/service.migrator.dll"]
+    environment:
+      ENV_App__DbConnectionString: Host=db;Database=aeza;Username=aeza;Password=${POSTGRES_PASSWORD}
+      ENV_App__AppDbUser: aeza_app
+      ENV_App__AppDbPassword: ${APP_DB_PASSWORD:?Задайте APP_DB_PASSWORD в .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: aeza-risk-app:local
+    pull_policy: never
+    environment:
+      ENV_App__DbConnectionString: Host=db;Database=aeza;Username=aeza_app;Password=${APP_DB_PASSWORD}
+      ENV_Auth__AdminLogin: ${BOOTSTRAP_ADMIN_LOGIN:?Задайте BOOTSTRAP_ADMIN_LOGIN в .env}
+      ENV_Auth__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?Задайте BOOTSTRAP_ADMIN_PASSWORD в .env (не короче 12 символов)}
+      ENV_Auth__AnalystLogin: ${BOOTSTRAP_ANALYST_LOGIN:-}
+      ENV_Auth__AnalystPassword: ${BOOTSTRAP_ANALYST_PASSWORD:-}
+      ENV_Auth__IngestToken: ${INGEST_TOKEN:-}
+      ENV_Spa__Enabled: "false"
+      ENV_Seed__File: /seed/data.json
+      ENV_Seed__SourceAsOf: "2026-10-19T15:00:00Z"
+      ENV_Seed__Label: organizer:test_data_yandex
+    volumes:
+      - ./test_data_yandex/data.json:/seed/data.json:ro
+    ports:
+      - "127.0.0.1:${API_PORT:-8081}:5000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Панель; /api и /hubs проксируются на app
+  front:
+    image: aeza-risk-web:local
+    build: ./web
+    environment:
+      AEZA_API: http://app:5000
+    ports:
+      - "127.0.0.1:${FRONT_PORT:-8080}:8080"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Симулятор системы-источника (синтетические события)
+  source-sim:
+    image: aeza-risk-app:local
+    pull_policy: never
+    profiles: ["demo"]
+    entrypoint: ["dotnet", "/app/simulator/Aeza.Risk.SourceSimulator.dll"]
+    environment:
+      SIM_API: http://app:5000
+      SIM_INGEST_TOKEN: ${INGEST_TOKEN:?Задайте INGEST_TOKEN в .env (им симулятор отправляет события)}
+      SIM_MODE: ${SIM_MODE:-live}
+      SIM_SEED: ${SIM_SEED:-42}
+      SIM_STEP_SECONDS: ${SIM_STEP_SECONDS:-15}
+      # Состояние симулятора переживает перезапуск (том simstate)
+      SIM_DIR: /state
+      SIM_INIT: /state/source-state.json,/seed/data.json
+    volumes:
+      - ./test_data_yandex/data.json:/seed/data.json:ro
+      - simstate:/state
+    healthcheck:
+      disable: true
+    depends_on:
+      - app
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=15d"]
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Задайте GRAFANA_ADMIN_PASSWORD в .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Плагины — только из образа, без обновления при старте
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/aeza.yml
+    volumes:
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+configs:
+  prometheus:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+      scrape_configs:
+        - job_name: aeza-risk
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["app:5000"]
+  grafana_datasource:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus:9090
+          isDefault: true
+  grafana_dashboards:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: aeza
+          folder: Aeza
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:
+  simstate:

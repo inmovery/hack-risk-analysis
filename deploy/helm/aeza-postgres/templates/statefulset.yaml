@@ -1,0 +1,204 @@
+{{- if eq .Values.mode "single" }}
+# Один экземпляр PostgreSQL; сервис <релиз>-rw называется так же, как в CloudNativePG
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ include "aeza-postgres.fullname" . }}-hl
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aeza-postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aeza-postgres.labels" . | nindent 8 }}
+        {{- include "aeza-postgres.selectorLabels" . | nindent 8 }}
+      {{- if .Values.public.enabled }}
+      annotations:
+        # Изменение pg_hba — перезапуск экземпляра
+        checksum/hba: {{ include (print $.Template.BasePath "/public.yaml") . | sha256sum }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        # postgres в alpine-образе — uid/gid 70
+        runAsUser: 70
+        runAsGroup: 70
+        runAsNonRoot: true
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.cluster.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cluster.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: {{ .Values.single.image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            {{- range $k, $v := .Values.cluster.parameters }}
+            - "-c"
+            - "{{ $k }}={{ $v }}"
+            {{- end }}
+            {{- if .Values.public.enabled }}
+            # Доступ снаружи (public.yaml): TLS и свой pg_hba — TCP только по TLS
+            - "-c"
+            - "ssl=on"
+            - "-c"
+            - "ssl_cert_file=/etc/postgresql/tls/tls.crt"
+            - "-c"
+            - "ssl_key_file=/etc/postgresql/tls/tls.key"
+            - "-c"
+            - "hba_file=/etc/postgresql/hba/pg_hba.conf"
+            {{- end }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.cluster.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.cluster.owner | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "cluster.ownerSecret обязателен" .Values.cluster.ownerSecret }}
+                  key: password
+            # Подкаталог: корень тома может содержать служебные файлы, initdb требует пустой каталог
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "{{ .Values.cluster.owner }}", "-d", "{{ .Values.cluster.database }}"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "{{ .Values.cluster.owner }}", "-d", "{{ .Values.cluster.database }}"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.cluster.resources | nindent 12 }}
+          securityContext:
+            {{- include "aeza-postgres.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.public.enabled }}
+            - name: tls
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+            - name: hba
+              mountPath: /etc/postgresql/hba
+              readOnly: true
+            {{- end }}
+        {{- if .Values.public.enabled }}
+        # Сертификат продлевает cert-manager: спутник замечает новые файлы и вызывает pg_reload_conf()
+        - name: tls-reload
+          image: {{ .Values.single.image }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              last=""
+              while true; do
+                cur=$(cat /etc/postgresql/tls/tls.crt /etc/postgresql/tls/tls.key | md5sum)
+                if [ -n "$last" ] && [ "$cur" != "$last" ]; then
+                  psql -h /var/run/postgresql -U {{ .Values.cluster.owner }} -d {{ .Values.cluster.database }} -Atc 'select pg_reload_conf()' >/dev/null
+                  echo "сертификат обновлён — конфигурация перечитана"
+                fi
+                last=$cur
+                sleep {{ .Values.public.reloadIntervalSeconds }}
+              done
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            {{- include "aeza-postgres.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tls
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+        {{- end }}
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.public.enabled }}
+        # Ключ: владелец root, группа postgres (fsGroup 70), 0640 — так PostgreSQL принимает файл ключа
+        - name: tls
+          secret:
+            secretName: {{ required "public.tlsSecretName обязателен (Secret kubernetes.io/tls)" .Values.public.tlsSecretName }}
+            defaultMode: 0640
+        - name: hba
+          configMap:
+            name: {{ include "aeza-postgres.fullname" . }}-hba
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aeza-postgres.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.cluster.storage.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.cluster.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-postgres.rwHost" . }}
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "aeza-postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}-hl
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "aeza-postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}

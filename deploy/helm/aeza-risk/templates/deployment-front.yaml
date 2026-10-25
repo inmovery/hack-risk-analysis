@@ -1,0 +1,99 @@
+{{- if .Values.front.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-front
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: front
+spec:
+  replicas: {{ .Values.front.replicas }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: front
+  template:
+    metadata:
+      labels:
+        {{- include "aeza-risk.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: front
+    spec:
+      serviceAccountName: {{ include "aeza-risk.fullname" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "aeza-risk.podSecurity" . | nindent 8 }}
+      {{- with .Values.front.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "aeza-risk.spread" (dict "root" . "component" "front" "values" .Values.front) | nindent 6 }}
+      containers:
+        - name: front
+          image: {{ include "aeza-risk.frontImage" . | quote }}
+          imagePullPolicy: {{ .Values.front.image.pullPolicy }}
+          # Пауза перед SIGTERM: Ingress успевает убрать под из endpoints
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # CSP connect-src: адрес API и WebSocket SignalR
+            - name: API_CONNECT_SRC
+              value: "{{ if not (include "aeza-risk.single" .) }}https://{{ include "aeza-risk.apiHost" . }}{{ include "aeza-risk.publicSuffix" . }} {{ end }}wss://{{ include "aeza-risk.apiHost" . }}{{ include "aeza-risk.publicSuffix" . }}"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.front.resources | nindent 12 }}
+          securityContext:
+            {{- include "aeza-risk.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            # envsubst пишет конфигурацию при старте; nginx-unprivileged держит временные файлы и pid в /tmp
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: conf
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-front
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: front
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "aeza-risk.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: front
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}

@@ -1,0 +1,14 @@
+<Project>
+    <!-- ML-инструмент: ML.NET, ONNX Runtime, Npgsql -->
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <MicrosoftMlVersion>5.0.1</MicrosoftMlVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.ML" Version="$(MicrosoftMlVersion)"/>
+        <PackageVersion Include="Microsoft.ML.FastTree" Version="$(MicrosoftMlVersion)"/>
+        <PackageVersion Include="Microsoft.ML.OnnxConverter" Version="0.23.1"/>
+        <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.31.0"/>
+        <PackageVersion Include="Npgsql" Version="10.0.3"/>
+    </ItemGroup>
+</Project>

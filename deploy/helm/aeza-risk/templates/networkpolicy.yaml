@@ -1,0 +1,63 @@
+{{- if .Values.networkPolicy.enabled }}
+# Сервис: вход только от Ingress-контроллера (API, hub, health), от Prometheus (/metrics) и от проверки helm test.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-app
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressController.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.podLabels | nindent 14 }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoring.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoring.podLabels | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "aeza-risk.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: test
+      ports:
+        - protocol: TCP
+          port: 5000
+{{- if .Values.front.enabled }}
+---
+# Панель: вход только от Ingress-контроллера
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-front
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: front
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressController.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- end }}

@@ -1,0 +1,159 @@
+{{- if .Values.ingress.enabled }}
+{{- if include "aeza-risk.single" . }}
+# Один адрес: /api, /hubs, /health → сервис; остальное → панель.
+# /metrics открыт снаружи при ingress.publicMetrics (только бизнес-агрегаты).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+  {{- with .Values.ingress.clusterIssuer }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ . }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ include "aeza-risk.apiHost" . | quote }}]
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ include "aeza-risk.apiHost" . | quote }}
+      http:
+        paths:
+          {{- range list "/api" "/hubs" "/health" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" $ }}-app
+                port:
+                  name: http
+          {{- end }}
+          {{- include "aeza-risk.metricsPath" . | nindent 10 }}
+          {{- if .Values.front.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" . }}-front
+                port:
+                  name: http
+          {{- end }}
+{{- with .Values.ingress.redirectHosts }}
+---
+# Дополнительные адреса (например, www) — постоянное перенаправление на основной адрес с сохранением пути
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "aeza-risk.fullname" $ }}-redirect
+  labels:
+    {{- include "aeza-risk.labels" $ | nindent 4 }}
+spec:
+  redirectRegex:
+    regex: "^https?://[^/]+(.*)"
+    replacement: "https://{{ include "aeza-risk.apiHost" $ }}{{ include "aeza-risk.publicSuffix" $ }}${1}"
+    permanent: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "aeza-risk.fullname" $ }}-redirect
+  labels:
+    {{- include "aeza-risk.labels" $ | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $.Release.Namespace }}-{{ include "aeza-risk.fullname" $ }}-redirect@kubernetescrd
+    {{- with $.Values.ingress.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ . }}
+    {{- end }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  tls:
+    - hosts: {{ toJson . }}
+      secretName: {{ $.Values.ingress.redirectTlsSecretName }}
+  rules:
+    {{- range . }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" $ }}-front
+                port:
+                  name: http
+    {{- end }}
+{{- end }}
+{{- else }}
+# Раздельные хосты: на API-хосте только маршруты сервиса и /metrics; корень → Swagger.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-api
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  {{- with .Values.ingress.clusterIssuer }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ . }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ include "aeza-risk.apiHost" . | quote }}]
+      secretName: {{ .Values.ingress.api.tlsSecretName }}
+  rules:
+    - host: {{ include "aeza-risk.apiHost" . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" . }}-app
+                port:
+                  name: http
+          {{- range list "/api" "/hubs" "/health" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" $ }}-app
+                port:
+                  name: http
+          {{- end }}
+          {{- include "aeza-risk.metricsPath" . | nindent 10 }}
+{{- if .Values.front.enabled }}
+---
+# Хост панели: только статика SPA (nginx сам отвечает 404 на /api, /hubs, /health, /metrics)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-front
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: front
+  {{- with .Values.ingress.clusterIssuer }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ . }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ include "aeza-risk.frontHost" . | quote }}]
+      secretName: {{ .Values.ingress.front.tlsSecretName }}
+  rules:
+    - host: {{ include "aeza-risk.frontHost" . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "aeza-risk.fullname" . }}-front
+                port:
+                  name: http
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,4 @@
+# GitLab Agent for Kubernetes: CI получает контекст $CI_PROJECT_PATH:aeza
+ci_access:
+  projects:
+    - id: inmovery/aeza-risk

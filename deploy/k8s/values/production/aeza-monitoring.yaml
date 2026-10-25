@@ -1,0 +1,9 @@
+# Продакшен; адрес Grafana подставляет CI
+ingress:
+  clusterIssuer: letsencrypt
+prometheus:
+  nodeSelector:
+    aeza/worker: "true"
+grafana:
+  nodeSelector:
+    aeza/worker: "true"

@@ -1,0 +1,18 @@
+Aeza Risk Analyzer {{ .Values.image.tag }} (релиз {{ .Release.Name }}, ревизия {{ .Release.Revision }}).
+
+  Панель:  https://{{ include "aeza-risk.frontHost" . }}{{ include "aeza-risk.publicSuffix" . }}
+  API:     https://{{ include "aeza-risk.apiHost" . }}{{ include "aeza-risk.publicSuffix" . }}/api/v1/… · Swagger: /api/v1/docs
+{{- if .Values.ingress.publicMetrics }}
+  /metrics: https://{{ include "aeza-risk.apiHost" . }}{{ include "aeza-risk.publicSuffix" . }}/metrics (без авторизации, бизнес-агрегаты)
+{{- else }}
+  /metrics снаружи не маршрутизируется; внутри кластера: http://{{ include "aeza-risk.fullname" . }}-app.{{ .Release.Namespace }}.svc:5000/metrics
+{{- end }}
+
+Проверки изнутри кластера:  helm test {{ .Release.Name }} -n {{ .Release.Namespace }} --logs
+Логи миграций:              kubectl -n {{ .Release.Namespace }} logs job/{{ include "aeza-risk.fullname" . }}-migrate
+{{- if .Values.hooks.backupBeforeUpgrade }}
+Бэкап перед обновлением:    kubectl -n {{ .Release.Namespace }} logs job/{{ include "aeza-risk.fullname" . }}-pre-upgrade-backup (PVC {{ .Values.hooks.backupClaimName }})
+{{- end }}
+
+Реплик сервиса: {{ .Values.app.replicas }}, панели: {{ .Values.front.replicas }} (на разных узлах, если возможно).
+Live-события, отзыв сессий и блокировка входа общие для реплик (канал PostgreSQL).

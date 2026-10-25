@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Тесты офлайн-ML: набор point-in-time, обучение, ONNX, проверка утечек -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\Aeza.Risk.Ml\Aeza.Risk.Ml.csproj"/>
+    <ProjectReference Include="..\..\tools\Aeza.Risk.SourceSimulator\Aeza.Risk.SourceSimulator.csproj"/>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Core\Aeza.Risk.Core.csproj"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="xunit.v3"/>
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\Aeza.Risk.IntegrationTests\Fixtures\ml\model-bundle.zip" Link="fixtures\model-bundle.zip" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+</Project>

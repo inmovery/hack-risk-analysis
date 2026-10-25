@@ -1,0 +1,57 @@
+{{- if .Values.networkPolicy.enabled }}
+# Prometheus: вход от Grafana (и от Ingress-контроллера, если Prometheus опубликован за basic auth)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-prometheus
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "aeza-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "aeza-monitoring.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: grafana
+        {{- if .Values.prometheus.ingress.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressController.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.podLabels | nindent 14 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# Grafana: вход только от Ingress-контроллера
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "aeza-monitoring.fullname" . }}-grafana
+  labels:
+    {{- include "aeza-monitoring.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "aeza-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressController.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3000
+{{- end }}

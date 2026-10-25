@@ -1,0 +1,69 @@
+# Мониторинг бизнес-метрик Aeza Risk Analyzer
+
+# Secret: grafana-admin-password; для Prometheus за basic auth — отдельный Secret (prometheus.ingress.basicAuthSecret)
+existingSecret: aeza-monitoring-secrets
+
+ingress:
+  className: traefik
+  # ClusterIssuer cert-manager; пусто — сертификат Traefik по умолчанию
+  clusterIssuer: letsencrypt
+
+prometheus:
+  image:
+    repository: prom/prometheus
+    tag: v3.15.1
+    pullPolicy: IfNotPresent
+  retention: 15d
+  scrapeInterval: 15s
+  # /metrics сервиса (Service <релиз aeza-risk>-app в namespace aeza)
+  targets:
+    - aeza-risk-app.aeza.svc.cluster.local:5000
+  persistence:
+    storageClass: local-path
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+  nodeSelector: {}
+  # Наружу — только за basic auth (Middleware Traefik)
+  ingress:
+    enabled: false
+    host: ""
+    tlsSecretName: aeza-prometheus-tls
+    # Secret с ключом users (строки htpasswd)
+    basicAuthSecret: prometheus-basic-auth
+
+grafana:
+  image:
+    repository: grafana/grafana
+    tag: 13.2.4
+    pullPolicy: IfNotPresent
+  adminUser: admin
+  persistence:
+    storageClass: local-path
+    size: 1Gi
+  # Лимит CPU: Grafana не забирает ядра у сервиса
+  resources:
+    requests:
+      cpu: 50m
+      memory: 160Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  nodeSelector: {}
+  ingress:
+    enabled: true
+    host: ""
+    tlsSecretName: aeza-grafana-tls
+  # Только для локального стенда с нестандартным HTTPS-портом (root_url Grafana)
+  publicPort: ""
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    namespace: kube-system
+    podLabels:
+      app.kubernetes.io/name: traefik

@@ -1,0 +1,102 @@
+{{- if .Values.backup.enabled }}
+# Каталог бэкапов: дампы перед обновлением сервиса, восстановление и плановые дампы
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.backup.claimName }}
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    # helm uninstall не удаляет бэкапы
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.backup.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.persistence.size }}
+{{- if .Values.backup.scheduled }}
+---
+# Логический бэкап + SHA-256, права 600; роль приложения пересоздаёт migrator
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "aeza-postgres.fullname" . }}-backup
+  labels:
+    {{- include "aeza-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            {{- include "aeza-postgres.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+            {{- toYaml .Values.networkPolicy.clientLabel | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsUser: 70
+            runAsGroup: 70
+            runAsNonRoot: true
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.backup.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: pg-dump
+              image: {{ .Values.backup.image }}
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  umask 077
+                  # NetworkPolicy применяется к новому поду с задержкой (kube-router): ждём доступности базы
+                  for i in $(seq 1 30); do pg_isready -q && break; sleep 2; done
+                  OUT="/backups/aeza-$(date -u +%Y%m%dT%H%M%SZ)-scheduled.dump"
+                  pg_dump -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -Fc --no-owner --no-privileges -f "$OUT.part"
+                  mv "$OUT.part" "$OUT"
+                  (cd /backups && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
+                  echo "backup: $OUT ($(wc -c < "$OUT") bytes)"
+                  find /backups -name 'aeza-*.dump*' -type f -mtime +{{ .Values.backup.retentionDays }} -print -delete
+              env:
+                # Текущий primary (после failover сервис -rw указывает на новый)
+                - name: PGHOST
+                  value: {{ include "aeza-postgres.rwHost" . }}
+                - name: PGDATABASE
+                  value: {{ .Values.cluster.database | quote }}
+                - name: PGUSER
+                  value: {{ .Values.cluster.owner | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.cluster.ownerSecret }}
+                      key: password
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              securityContext:
+                {{- include "aeza-postgres.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ .Values.backup.claimName }}
+{{- end }}
+{{- end }}

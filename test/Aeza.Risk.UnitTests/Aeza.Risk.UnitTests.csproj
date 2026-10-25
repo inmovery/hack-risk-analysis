@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Core\Aeza.Risk.Core.csproj"/>
+    <ProjectReference Include="..\..\src\Aeza.Risk.Feature\Aeza.Risk.Feature.csproj"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+    <PackageReference Include="AutoFixture"/>
+    <PackageReference Include="AutoFixture.AutoMoq"/>
+    <PackageReference Include="FluentAssertions"/>
+    <PackageReference Include="Moq"/>
+    <PackageReference Include="xunit.v3"/>
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\test_data_yandex\data.json" Link="organizer\data.json" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+</Project>

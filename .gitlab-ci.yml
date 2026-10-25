@@ -1,0 +1,118 @@
+# Сборка образов в реестр GitLab, выкат в k3s через GitLab Agent и откат — вручную. В merge request — только сборка.
+# Переменные проекта:
+#   APP_HOST        — адрес продукта (панель, API, Swagger), например inmovery.dev
+#   REDIRECT_HOSTS  — адреса с перенаправлением на APP_HOST через запятую (необязательно)
+#   GRAFANA_HOST    — адрес Grafana; пусто — без Ingress
+#   LOAD_TEST_DATA  — true: при первой установке загрузить тестовые данные в пустую БД
+# Секреты сервиса создаются в кластере заранее и в CI не передаются.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+stages: [build, deploy]
+
+variables:
+  APP_IMAGE: $CI_REGISTRY_IMAGE/app
+  FRONT_IMAGE: $CI_REGISTRY_IMAGE/front
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  KUBE_CONTEXT: $CI_PROJECT_PATH:aeza
+  NAMESPACE: aeza
+  MONITORING_NAMESPACE: monitoring
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+
+.rules-default-branch: &default-branch
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.rules-build: &build-rules
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.dind: &dind
+  - name: docker:29.9.2-dind
+    alias: docker
+
+# --provenance=false: иначе реестр GitLab отклоняет attestation-манифест Docker 29
+.docker:
+  image: docker:29.9.2
+  services: *dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - PUSH="--push"; [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ] && PUSH="" || true
+  rules: *build-rules
+
+build:app:
+  extends: .docker
+  stage: build
+  script:
+    - >-
+      docker buildx build --pull --provenance=false $PUSH
+      --build-arg BUILD_VERSION="$IMAGE_TAG" --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t "$APP_IMAGE:$IMAGE_TAG" .
+
+build:front:
+  extends: .docker
+  stage: build
+  script:
+    - docker buildx build --pull --provenance=false $PUSH -f web/Dockerfile.static -t "$FRONT_IMAGE:$IMAGE_TAG" web
+
+deploy:production:
+  stage: deploy
+  image:
+    name: alpine/helm:4.3.1
+    entrypoint: [""]
+  needs: [build:app, build:front]
+  environment:
+    name: production
+    url: https://$APP_HOST
+  resource_group: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  script:
+    - test -n "$APP_HOST" || { echo "Задайте APP_HOST" >&2; exit 1; }
+    # Без --wait: базу дожидается hook миграций
+    - >-
+      helm upgrade --install aeza-postgres deploy/helm/aeza-postgres --kube-context "$KUBE_CONTEXT" -n "$NAMESPACE"
+      -f deploy/k8s/values/production/aeza-postgres.yaml
+    # Hooks: бэкап → миграции → сервис и панель; при неудаче — откат релиза
+    - |
+      SEED_ARGS=""
+      [ "${LOAD_TEST_DATA:-false}" = "true" ] && SEED_ARGS="--set-file seed.data=test_data_yandex/data.json"
+      REDIRECT_ARGS=""
+      [ -n "$REDIRECT_HOSTS" ] && REDIRECT_ARGS="--set ingress.redirectHosts={$REDIRECT_HOSTS}"
+      helm upgrade --install aeza-risk deploy/helm/aeza-risk --kube-context "$KUBE_CONTEXT" -n "$NAMESPACE" \
+        -f deploy/k8s/values/production/aeza-risk.yaml \
+        --set image.repository="$APP_IMAGE" --set image.tag="$IMAGE_TAG" \
+        --set front.image.repository="$FRONT_IMAGE" --set front.image.tag="$IMAGE_TAG" \
+        --set ingress.host="$APP_HOST" $REDIRECT_ARGS \
+        $SEED_ARGS --wait --timeout 15m --rollback-on-failure
+    - helm test aeza-risk --kube-context "$KUBE_CONTEXT" -n "$NAMESPACE" --logs
+    - |
+      GRAFANA_ARGS="--set grafana.ingress.enabled=false"
+      [ -n "$GRAFANA_HOST" ] && GRAFANA_ARGS="--set grafana.ingress.host=$GRAFANA_HOST"
+      helm upgrade --install aeza-monitoring deploy/helm/aeza-monitoring --kube-context "$KUBE_CONTEXT" -n "$MONITORING_NAMESPACE" \
+        -f deploy/k8s/values/production/aeza-monitoring.yaml $GRAFANA_ARGS --wait --timeout 10m
+
+# Откат на предыдущую ревизию релиза (схема БД не откатывается)
+rollback:production:
+  stage: deploy
+  image:
+    name: alpine/helm:4.3.1
+    entrypoint: [""]
+  needs: [deploy:production]
+  environment:
+    name: production
+    action: access
+  resource_group: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  script:
+    - helm history aeza-risk --kube-context "$KUBE_CONTEXT" -n "$NAMESPACE" --max 5
+    - helm rollback aeza-risk --kube-context "$KUBE_CONTEXT" -n "$NAMESPACE" --wait --timeout 10m

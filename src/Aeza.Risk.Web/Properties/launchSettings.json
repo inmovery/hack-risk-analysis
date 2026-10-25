@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Aeza.Risk.Web": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "api/v1/docs",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:5080"
+    }
+  }
+}

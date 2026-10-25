@@ -1,0 +1,35 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+        <NoWarn>$(NoWarn);NU1507</NoWarn>
+        <!-- Версии закреплены точно: воспроизводимая сборка + packages.lock.json -->
+        <MicrosoftPackageVersion>10.0.13</MicrosoftPackageVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- Логирование и метрики -->
+        <PackageVersion Include="NLog.Web.AspNetCore" Version="6.2.2"/>
+        <PackageVersion Include="OpenTelemetry" Version="1.15.3"/>
+        <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3"/>
+        <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.15.3-beta.1"/>
+        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="$(MicrosoftPackageVersion)"/>
+        <!-- Microsoft.OpenApi не ниже 2.12.x (GHSA-v5pm-xwqc-g5wc); ветка 3.x несовместима с AspNetCore.OpenApi 10 -->
+        <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2"/>
+        <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.3.1"/>
+        <PackageVersion Include="JetBrains.Annotations" Version="2025.2.4"/>
+        <PackageVersion Include="Npgsql" Version="10.0.3"/>
+        <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3"/>
+        <PackageVersion Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="$(MicrosoftPackageVersion)"/>
+        <PackageVersion Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.2.1"/>
+        <PackageVersion Include="Asp.Versioning.Http" Version="10.2.3"/>
+        <PackageVersion Include="Asp.Versioning.OpenApi" Version="10.2.3"/>
+        <PackageVersion Include="FluentValidation" Version="12.1.1"/>
+        <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1"/>
+        <PackageVersion Include="Scrutor" Version="7.0.0"/>
+        <!-- Теневой инференс ML: ONNX in-process, CPU -->
+        <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.31.0"/>
+    </ItemGroup>
+</Project>

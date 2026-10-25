@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- Офлайн-ML: набор из журнала, обучение, экспорт ONNX, отчёт -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Aeza.Risk.Ml</RootNamespace>
+        <AssemblyName>Aeza.Risk.Ml</AssemblyName>
+        <StartupObject>Aeza.Risk.Ml.MlApp</StartupObject>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Aeza.Risk.Core\Aeza.Risk.Core.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.ML"/>
+        <PackageReference Include="Microsoft.ML.FastTree"/>
+        <PackageReference Include="Microsoft.ML.OnnxConverter"/>
+        <PackageReference Include="Microsoft.ML.OnnxRuntime"/>
+        <PackageReference Include="Npgsql"/>
+    </ItemGroup>
+</Project>

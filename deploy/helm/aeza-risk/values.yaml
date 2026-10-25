@@ -1,0 +1,138 @@
+# Порядок выкладки: aeza-postgres → этот релиз (hooks: бэкап → миграции → сервис и панель).
+# Секреты создаются в кластере заранее: чарт и CI их не генерируют.
+
+image:
+  # CI: --set image.repository=$CI_REGISTRY_IMAGE/app --set image.tag=$CI_COMMIT_SHORT_SHA
+  repository: registry.gitlab.com/GROUP/PROJECT/app
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Secret реестра образов (deploy token с read_registry)
+imagePullSecrets:
+  - name: gitlab-registry
+
+# Secret сервиса: app-db-password, admin-login, admin-password,
+# необязательные analyst-login, analyst-password, ingest-token (коннектор http-push)
+existingSecret: aeza-risk-secrets
+
+database:
+  # Сервис CloudNativePG с текущим primary (релиз aeza-postgres): после failover указывает на новый primary
+  host: aeza-postgres-rw
+  port: 5432
+  name: aeza
+  # Владелец схемы (migrator и бэкап): ключ password в Secret kubernetes.io/basic-auth
+  ownerUser: aeza
+  ownerSecret: aeza-postgres-owner
+  # Роль сервиса (только DML), создаётся migrator
+  appUser: aeza_app
+
+app:
+  # Реплики — на разных узлах, если возможно; live-события и сессии общие через PostgreSQL
+  replicas: 2
+  # Ожидание перед переносом подов с недоступного узла
+  unreachableTolerationSeconds: 60
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 640Mi
+  nodeSelector: {}
+  tolerations: []
+  # Cookie только по HTTPS (TLS снимает Ingress)
+  secureCookies: true
+  # Пусто — https://<ingress.front.host>
+  corsOrigins: []
+  # true — Swagger UI и спецификация только после входа
+  docsRequireAuth: false
+  # Дополнительные несекретные переменные ENV_*
+  extraEnv: {}
+
+front:
+  enabled: true
+  unreachableTolerationSeconds: 60
+  image:
+    # CI: --set front.image.repository=$CI_REGISTRY_IMAGE/front
+    repository: registry.gitlab.com/GROUP/PROJECT/front
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 64Mi
+  nodeSelector: {}
+  tolerations: []
+
+ingress:
+  enabled: true
+  className: traefik
+  # ClusterIssuer cert-manager; пусто — сертификат Traefik по умолчанию
+  clusterIssuer: letsencrypt
+  # single — панель и API на одном адресе; split — раздельные хосты (api.host, front.host)
+  mode: single
+  # Режим single: адрес продукта и адреса, перенаправляемые на него (например, www)
+  host: ""
+  tlsSecretName: aeza-tls
+  redirectHosts: []
+  redirectTlsSecretName: aeza-redirect-tls
+  # Режим split
+  api:
+    host: ""
+    tlsSecretName: aeza-api-tls
+  front:
+    host: ""
+    tlsSecretName: aeza-front-tls
+  # Нестандартный HTTPS-порт (только локальный стенд)
+  publicPort: ""
+  # Привязка клиента к реплике (SignalR)
+  stickySessions: true
+  # /metrics снаружи: без авторизации, только бизнес-агрегаты без PII
+  publicMetrics: true
+
+# Импорт тестовых данных в пустую БД: --set-file seed.data=test_data_yandex/data.json
+seed:
+  data: ""
+  sourceAsOf: "2026-10-19T15:00:00Z"
+  label: organizer:test_data_yandex
+
+hooks:
+  # Job-ы до обновления: бэкап (upgrade) → миграции
+  image:
+    repository: postgres
+    tag: "17.11-alpine"
+    pullPolicy: IfNotPresent
+  backupBeforeUpgrade: true
+  # PVC бэкапов из релиза aeza-postgres
+  backupClaimName: aeza-backups
+  backupNodeSelector: {}
+  # Первая установка ждёт инициализацию PostgreSQL
+  migrationTimeoutSeconds: 900
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+networkPolicy:
+  enabled: true
+  # Метка, по которой aeza-postgres пускает к базе
+  dbClientLabel:
+    aeza.io/db-client: "true"
+  # Ingress-контроллер (k3s: Traefik в kube-system)
+  ingressController:
+    namespace: kube-system
+    podLabels:
+      app.kubernetes.io/name: traefik
+  # Prometheus снимает /metrics внутри кластера
+  monitoring:
+    namespace: monitoring
+    podLabels:
+      app.kubernetes.io/name: aeza-monitoring
+      app.kubernetes.io/component: prometheus
+
+tests:
+  image: curlimages/curl:8.23.0

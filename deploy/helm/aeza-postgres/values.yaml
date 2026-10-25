@@ -1,0 +1,86 @@
+# PostgreSQL для Aeza Risk Analyzer; сервис подключается к <релиз>-rw.
+
+# single — один экземпляр (StatefulSet) без оператора;
+# cnpg — CloudNativePG: копия на другом узле и автоматический failover
+mode: single
+
+cluster:
+  database: aeza
+  # Владелец схемы: migrator, бэкап и восстановление; сервис — роль aeza_app (только DML)
+  owner: aeza
+  # Secret kubernetes.io/basic-auth (username, password)
+  ownerSecret: aeza-postgres-owner
+  storage:
+    # k3s: local-path — каталог на диске узла; экземпляр привязан к своему узлу
+    storageClass: local-path
+    size: 10Gi
+  parameters:
+    max_connections: "100"
+    shared_buffers: 320MB
+    effective_cache_size: 768MB
+    work_mem: 4MB
+    maintenance_work_mem: 64MB
+    log_min_duration_statement: "1000"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1280Mi
+  nodeSelector: {}
+  tolerations: []
+
+# Режим single
+single:
+  image: postgres:17.11-alpine
+
+# Режим cnpg (оператор CloudNativePG 1.30)
+cnpg:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-minimal-trixie
+  # Синхронная реплика с деградацией до асинхронной (dataDurability: preferred)
+  synchronous: true
+  # Меньше значений по умолчанию (180 с и 3600 с): primary быстрее принимает подключения
+  smartShutdownTimeout: 15
+  switchoverDelay: 60
+  # required — экземпляры строго на разных узлах; preferred — допустим один узел (локальный стенд)
+  podAntiAffinityType: required
+
+# Доступ снаружи кластера (только mode: single): LoadBalancer на рабочем узле, TCP только по TLS
+public:
+  enabled: false
+  port: 5432
+  # Secret kubernetes.io/tls с сертификатом сервера — например, выпущенный cert-manager для адреса продукта
+  tlsSecretName: ""
+  # Адреса, которым разрешено подключаться (loadBalancerSourceRanges); пусто — весь интернет
+  sourceRanges: []
+  # Как часто проверять, не продлён ли сертификат (тогда — pg_reload_conf)
+  reloadIntervalSeconds: 3600
+
+networkPolicy:
+  enabled: true
+  # Подключаться к базе могут только поды с этой меткой в том же namespace: сервис, migrator, бэкапы, восстановление
+  clientLabel:
+    aeza.io/db-client: "true"
+  # Режим cnpg: оператор опрашивает экземпляры (статус — 8000, PostgreSQL — 5432)
+  operatorNamespace: cnpg-system
+
+backup:
+  # PVC бэкапов: дампы перед каждой выкладкой; local-path привязывает его к узлу первым бэкапом
+  enabled: true
+  claimName: aeza-backups
+  persistence:
+    storageClass: local-path
+    size: 10Gi
+  # Ежедневный pg_dump по schedule с хранением retentionDays
+  scheduled: false
+  schedule: "30 2 * * *"
+  retentionDays: 14
+  image: postgres:17.11-alpine
+  nodeSelector: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

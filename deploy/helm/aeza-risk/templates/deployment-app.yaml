@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-app
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.app.replicas }}
+  revisionHistoryLimit: 5
+  # Новый под поднимается до остановки старого: пересчёт защищён advisory lock
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "aeza-risk.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "aeza-risk.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+        {{- toYaml .Values.networkPolicy.dbClientLabel | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "aeza-risk.fullname" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "aeza-risk.podSecurity" . | nindent 8 }}
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "aeza-risk.spread" (dict "root" . "component" "app" "values" .Values.app) | nindent 6 }}
+      # preStop (5 с) + штатная остановка ASP.NET Core (до 30 с)
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: app
+          image: {{ include "aeza-risk.appImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Пауза перед SIGTERM: Ingress успевает убрать под из endpoints
+          # В chiseled-образе нет /bin/sleep — встроенное действие kubelet
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          ports:
+            - name: http
+              containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: {{ include "aeza-risk.fullname" . }}-app
+          env:
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: app-db-password
+            - name: ENV_App__DbConnectionString
+              value: "Host={{ .Values.database.host }};Port={{ .Values.database.port }};Database={{ .Values.database.name }};Username={{ .Values.database.appUser }};Password=$(APP_DB_PASSWORD)"
+            - name: ENV_Auth__AdminLogin
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: admin-login
+            - name: ENV_Auth__AdminPassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: admin-password
+            - name: ENV_Auth__AnalystLogin
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: analyst-login
+                  optional: true
+            - name: ENV_Auth__AnalystPassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: analyst-password
+                  optional: true
+            - name: ENV_Auth__IngestToken
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: ingest-token
+                  optional: true
+          # Первый старт: импорт снимка и первый пересчёт — до минуты
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          # БД, миграции, опубликованное поколение
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          securityContext:
+            {{- include "aeza-risk.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.seed.data }}
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.seed.data }}
+        - name: seed
+          configMap:
+            name: {{ include "aeza-risk.fullname" . }}-seed
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeza-risk.fullname" . }}-app
+  labels:
+    {{- include "aeza-risk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  {{- if .Values.ingress.stickySessions }}
+  # Traefik: привязка клиента к реплике для SignalR
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: aeza_lb
+    traefik.ingress.kubernetes.io/service.sticky.cookie.secure: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.httponly: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.samesite: lax
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "aeza-risk.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
